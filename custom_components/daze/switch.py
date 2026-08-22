@@ -11,6 +11,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.switch import SwitchEntity
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -86,30 +87,17 @@ class DazeWallboxSwitchEntity(
             await self._api_client.async_start_charge(self._serial_number)
             await self.coordinator.async_request_refresh()
         except ApiAuthError as err:
-            _LOGGER.warning(
-                "Auth error starting charge on %s: %s",
-                self._serial_number,
-                err,
-            )
-            self._notify_error(
-                "Authentication failed when trying to start charging. "
-                "Please re-authenticate the integration."
-            )
+            raise ConfigEntryAuthFailed(
+                "Authentication failed when starting charge. "
+                "Please re-authenticate the Daze integration."
+            ) from err
         except ApiError as err:
-            _LOGGER.warning(
-                "API error starting charge on %s: %s",
-                self._serial_number,
-                err,
-            )
-            self._notify_error(
-                "Failed to start charging. "
-                "Check that the car is connected and try again. "
-                f"Error: {err}"
-            )
+            raise HomeAssistantError(
+                f"Failed to start charging: {err}"
+            ) from err
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Stop charging on the wallbox."""
-        # Already stopped — idempotent no-op
         if self.is_on is False or self.is_on is None:
             _LOGGER.debug(
                 "Switch turn_off called but not charging — skipping"
@@ -123,34 +111,14 @@ class DazeWallboxSwitchEntity(
             await self._api_client.async_stop_charge(self._serial_number)
             await self.coordinator.async_request_refresh()
         except ApiAuthError as err:
-            _LOGGER.warning(
-                "Auth error stopping charge on %s: %s",
-                self._serial_number,
-                err,
-            )
-            self._notify_error(
-                "Authentication failed when trying to stop charging. "
-                "Please re-authenticate the integration."
-            )
+            raise ConfigEntryAuthFailed(
+                "Authentication failed when stopping charge. "
+                "Please re-authenticate the Daze integration."
+            ) from err
         except ApiError as err:
-            _LOGGER.warning(
-                "API error stopping charge on %s: %s",
-                self._serial_number,
-                err,
-            )
-            self._notify_error(
-                "Failed to stop charging. "
-                f"Error: {err}"
-            )
-
-    def _notify_error(self, message: str) -> None:
-        """Show a persistent notification in the HA frontend."""
-        self.hass.components.persistent_notification.async_create(
-            hass=self.hass,
-            message=message,
-            title="Daze Wallbox — Charge Control Error",
-            notification_id=f"daze_switch_error_{self._serial_number}",
-        )
+            raise HomeAssistantError(
+                f"Failed to stop charging: {err}"
+            ) from err
 
 
 async def async_setup_entry(

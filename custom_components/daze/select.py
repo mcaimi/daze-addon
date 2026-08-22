@@ -11,6 +11,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.select import SelectEntity
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -119,17 +120,10 @@ class DazeWallboxSelectEntity(
 
         eco_value = _MODE_TO_ECO.get(option)
         if eco_value is None:
-            # "scheduled" mode — not yet supported via API
-            _LOGGER.warning(
-                "Scheduled operation mode is not yet supported via the "
-                "Daze API on wallbox %s",
-                self._serial_number,
-            )
-            self._notify_error(
+            raise HomeAssistantError(
                 "Scheduled operation mode is not yet supported via the "
                 "Daze API. Please use 'Fast' or 'Eco' mode."
             )
-            return
 
         try:
             _LOGGER.info(
@@ -144,34 +138,14 @@ class DazeWallboxSelectEntity(
             )
             await self.coordinator.async_request_refresh()
         except ApiAuthError as err:
-            _LOGGER.warning(
-                "Auth error setting operation mode on %s: %s",
-                self._serial_number,
-                err,
-            )
-            self._notify_error(
-                "Authentication failed when trying to change the "
-                "operation mode. Please re-authenticate the integration."
-            )
+            raise ConfigEntryAuthFailed(
+                "Authentication failed when setting operation mode. "
+                "Please re-authenticate the Daze integration."
+            ) from err
         except ApiError as err:
-            _LOGGER.warning(
-                "API error setting operation mode on %s: %s",
-                self._serial_number,
-                err,
-            )
-            self._notify_error(
-                "Failed to change the operation mode. "
-                f"Error: {err}"
-            )
-
-    def _notify_error(self, message: str) -> None:
-        """Show a persistent notification in the HA frontend."""
-        self.hass.components.persistent_notification.async_create(
-            hass=self.hass,
-            message=message,
-            title="Daze Wallbox — Operation Mode Error",
-            notification_id=f"daze_select_error_{self._serial_number}",
-        )
+            raise HomeAssistantError(
+                f"Failed to set operation mode: {err}"
+            ) from err
 
 
 async def async_setup_entry(

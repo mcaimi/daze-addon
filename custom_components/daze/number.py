@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.number import NumberEntity
 from homeassistant.const import EntityCategory, UnitOfElectricCurrent
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -115,34 +116,14 @@ class DazeWallboxNumberEntity(
             )
             await self.coordinator.async_request_refresh()
         except ApiAuthError as err:
-            _LOGGER.warning(
-                "Auth error setting max current on %s: %s",
-                self._serial_number,
-                err,
-            )
-            self._notify_error(
-                "Authentication failed when trying to set the charging "
-                "current. Please re-authenticate the integration."
-            )
+            raise ConfigEntryAuthFailed(
+                "Authentication failed when setting charging current. "
+                "Please re-authenticate the Daze integration."
+            ) from err
         except ApiError as err:
-            _LOGGER.warning(
-                "API error setting max current on %s: %s",
-                self._serial_number,
-                err,
-            )
-            self._notify_error(
-                "Failed to set the maximum charging current. "
-                f"Error: {err}"
-            )
-
-    def _notify_error(self, message: str) -> None:
-        """Show a persistent notification in the HA frontend."""
-        self.hass.components.persistent_notification.async_create(
-            hass=self.hass,
-            message=message,
-            title="Daze Wallbox — Charging Current Error",
-            notification_id=f"daze_number_error_{self._serial_number}",
-        )
+            raise HomeAssistantError(
+                f"Failed to set charging current: {err}"
+            ) from err
 
 
 async def async_setup_entry(
