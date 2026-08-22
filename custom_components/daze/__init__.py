@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import voluptuous as vol
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers import config_validation as cv, device_registry as dr
 
-from .api import ApiAuthError, ApiError
+from .api import ApiAuthError, ApiError, DazeApiClient
 from .const import (
     CONF_DEVICE_PROFILE,
     CONF_EVSE_NAME,
@@ -27,8 +29,20 @@ from .const import (
 from .coordinator import DazeDataUpdateCoordinator, async_setup_coordinator
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant, ServiceCall
+
+
+@dataclass
+class DazeRuntimeData:
+    """Runtime data stored in the config entry."""
+
+    coordinator: DazeDataUpdateCoordinator
+    api_client: DazeApiClient
+    serial_number: str
+    network_uid: str
+
+
+type DazeConfigEntry = ConfigEntry[DazeRuntimeData]
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,7 +57,7 @@ SET_CHARGING_CURRENT_SCHEMA = vol.Schema({
 })
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: DazeConfigEntry) -> bool:
     """Set up Daze Wallbox from a config entry.
 
     Creates the DataUpdateCoordinator, registers the wallbox device,
@@ -67,14 +81,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         configuration_url="https://webportal.dazeservice.com",
     )
 
-    # Store coordinator and API client in hass.data for entity platforms
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {
-        "coordinator": coordinator,
-        "api_client": coordinator.api_client,
-        "serial_number": entry.data[CONF_SERIAL_NUMBER],
-        "network_uid": entry.data[CONF_NETWORK_UID],
-    }
+    # Store runtime data in the config entry
+    entry.runtime_data = DazeRuntimeData(
+        coordinator=coordinator,
+        api_client=coordinator.api_client,
+        serial_number=entry.data[CONF_SERIAL_NUMBER],
+        network_uid=entry.data[CONF_NETWORK_UID],
+    )
 
     # Forward setup to entity platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -88,20 +101,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: DazeConfigEntry) -> bool:
     """Unload a Daze Wallbox config entry."""
     _LOGGER.debug("Unloading Daze Wallbox config entry %s", entry.entry_id)
 
-    # Unload entity platforms
-    unload_ok = await hass.config_entries.async_unload_platforms(
-        entry, PLATFORMS
-    )
-
-    if unload_ok:
-        # Clean up stored data
-        hass.data[DOMAIN].pop(entry.entry_id, None)
-
-    return unload_ok
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
 async def _async_update_listener(

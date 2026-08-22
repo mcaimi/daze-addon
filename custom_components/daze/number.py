@@ -19,9 +19,10 @@ from .const import DOMAIN
 from .coordinator import DazeDataUpdateCoordinator
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+from . import DazeConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -144,18 +145,13 @@ class DazeWallboxNumberEntity(
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: DazeConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Daze Wallbox number entity.
-
-    Reads the coordinator, API client, serial number, and device info
-    from ``hass.data`` and registers the number entity.
-    """
-    entry_data = hass.data[DOMAIN][entry.entry_id]
-    coordinator: DazeDataUpdateCoordinator = entry_data["coordinator"]
-    api_client = entry_data["api_client"]
-    serial_number: str = entry_data["serial_number"]
+    """Set up Daze Wallbox number entity."""
+    coordinator = entry.runtime_data.coordinator
+    api_client = entry.runtime_data.api_client
+    serial_number = entry.runtime_data.serial_number
 
     device_info = DeviceInfo(
         identifiers={(DOMAIN, serial_number)},
