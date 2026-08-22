@@ -46,21 +46,13 @@ class DazeDataUpdateCoordinator(
     def __init__(
         self,
         hass: HomeAssistant,
+        entry: ConfigEntry,
         api_client: DazeApiClient,
         serial_number: str,
         network_uid: str,
         poll_interval: int = DEFAULT_POLL_INTERVAL,
     ) -> None:
-        """Initialise the coordinator.
-
-        Args:
-            hass: The HomeAssistant instance.
-            api_client: An authenticated DazeApiClient.
-            serial_number: The wallbox serial number.
-            network_uid: The network UID for the wallbox.
-            poll_interval: Polling interval in seconds (default 30).
-
-        """
+        """Initialise the coordinator."""
         self._api_client = api_client
         self._serial_number = serial_number
         self._network_uid = network_uid
@@ -72,6 +64,7 @@ class DazeDataUpdateCoordinator(
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=entry,
             name=f"{DOMAIN}-{serial_number}",
             update_interval=timedelta(seconds=poll_interval),
         )
@@ -317,6 +310,7 @@ async def async_setup_coordinator(
 
     coordinator = DazeDataUpdateCoordinator(
         hass=hass,
+        entry=entry,
         api_client=api_client,
         serial_number=serial_number,
         network_uid=network_uid,
