@@ -7,7 +7,7 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow, SOURCE_REAUTH
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -89,7 +89,6 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         """Initialise the config flow."""
-        self._reauth_entry: ConfigEntry | None = None
         self._access_token: str | None = None
         self._refresh_token: str | None = None
         self._email: str | None = None
@@ -136,10 +135,9 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
                 # Proceed to network selection
                 return await self.async_step_network()
 
-        # Show the re-auth title if this is a re-authentication flow
-        if self._reauth_entry:
+        if self.source == SOURCE_REAUTH:
             self.context["title_placeholders"] = {
-                "name": self._reauth_entry.title
+                "name": self._get_reauth_entry().title
             }
 
         return self.async_show_form(
@@ -253,15 +251,10 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_SOFTWARE_VERSION: self._software_version,
             }
 
-            if self._reauth_entry:
-                # Update existing entry (re-auth flow)
-                self.hass.config_entries.async_update_entry(
-                    self._reauth_entry, data=data
+            if self.source == SOURCE_REAUTH:
+                return self.async_update_reload_and_abort(
+                    self._get_reauth_entry(), data_updates=data
                 )
-                await self.hass.config_entries.async_reload(
-                    self._reauth_entry.entry_id
-                )
-                return self.async_abort(reason="reauth_successful")
 
             # Set unique ID to prevent duplicate entries
             await self.async_set_unique_id(self._serial_number)
@@ -327,12 +320,9 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
     # ------------------------------------------------------------------
 
     async def async_step_reauth(
-        self, user_input: dict[str, Any] | None = None
+        self, entry_data: dict[str, Any]
     ) -> FlowResult:
         """Handle re-authentication when tokens are expired/invalid."""
-        self._reauth_entry = self.hass.config_entries.async_get_entry(
-            self.context["entry_id"]
-        )
         return await self.async_step_user()
 
     @staticmethod
