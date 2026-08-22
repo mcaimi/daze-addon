@@ -28,8 +28,7 @@ from .coordinator import DazeDataUpdateCoordinator, async_setup_coordinator
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
-    from homeassistant.core import HomeAssistant
-    from homeassistant.helpers.typing import ConfigType
+    from homeassistant.core import HomeAssistant, ServiceCall
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -132,7 +131,7 @@ def _async_register_services(
     api_client = coordinator.api_client
     serial_number = coordinator.serial_number
 
-    async def _handle_start_charge(call: ConfigType) -> None:
+    async def _handle_start_charge(call: ServiceCall) -> None:
         """Start charging."""
         try:
             await api_client.async_start_charge(serial_number)
@@ -147,7 +146,7 @@ def _async_register_services(
                 f"Failed to start charging: {err}"
             ) from err
 
-    async def _handle_stop_charge(call: ConfigType) -> None:
+    async def _handle_stop_charge(call: ServiceCall) -> None:
         """Stop charging."""
         try:
             await api_client.async_stop_charge(serial_number)
@@ -162,7 +161,7 @@ def _async_register_services(
                 f"Failed to stop charging: {err}"
             ) from err
 
-    async def _handle_set_charging_current(call: ConfigType) -> None:
+    async def _handle_set_charging_current(call: ServiceCall) -> None:
         """Set the maximum charging current."""
         current: int = call.data["current"]
         try:
@@ -181,29 +180,34 @@ def _async_register_services(
             ) from err
 
     # Register each service with cleanup on config entry unload
-    entry.async_on_unload(
-        hass.services.async_register(
-            DOMAIN,
-            SERVICE_START_CHARGE,
-            _handle_start_charge,
-            schema=vol.Schema({}),
-        )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_START_CHARGE,
+        _handle_start_charge,
+        schema=vol.Schema({}),
     )
     entry.async_on_unload(
-        hass.services.async_register(
-            DOMAIN,
-            SERVICE_STOP_CHARGE,
-            _handle_stop_charge,
-            schema=vol.Schema({}),
-        )
+        lambda: hass.services.async_remove(DOMAIN, SERVICE_START_CHARGE)
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_STOP_CHARGE,
+        _handle_stop_charge,
+        schema=vol.Schema({}),
     )
     entry.async_on_unload(
-        hass.services.async_register(
-            DOMAIN,
-            SERVICE_SET_CHARGING_CURRENT,
-            _handle_set_charging_current,
-            schema=SET_CHARGING_CURRENT_SCHEMA,
-        )
+        lambda: hass.services.async_remove(DOMAIN, SERVICE_STOP_CHARGE)
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_CHARGING_CURRENT,
+        _handle_set_charging_current,
+        schema=SET_CHARGING_CURRENT_SCHEMA,
+    )
+    entry.async_on_unload(
+        lambda: hass.services.async_remove(DOMAIN, SERVICE_SET_CHARGING_CURRENT)
     )
 
     _LOGGER.debug(

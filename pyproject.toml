@@ -1,0 +1,21 @@
+[project]
+name = "daze-addon"
+version = "0.2.0"
+description = "Dazebox EV Charger Custom Component for Home Assistant"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "aiohttp>=3.9.3",
+  "homeassistant>=2024.3.3",
+  "pytest>=9.1.1",
+  "voluptuous>=0.13.1",
+]
+
+[project.scripts]
+daze-addon = "daze_addon:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
