@@ -200,7 +200,7 @@ class DazeAuthClient:
         """Return the access token expiry UNIX timestamp."""
         return self._token_expiry
 
-    def async_get_tokens_for_store(self) -> dict[str, Any]:
+    def get_tokens_for_store(self) -> dict[str, Any]:
         """Return a dict safe for config entry storage.
 
         This does NOT include raw API responses or sensitive metadata.
