@@ -8,7 +8,7 @@ from typing import Any
 from aiohttp import ClientSession
 from aiohttp.client_exceptions import ClientError
 
-from ..const import API_BASE_URL
+from ..const import API_BASE_URL, COGNITO_BASE_URL
 from .auth import AuthError, DazeAuthClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -215,9 +215,7 @@ class DazeApiClient:
 
         GET /oauth2/userInfo
         """
-        url = (
-            "https://daze.auth.eu-central-1.amazoncognito.com/oauth2/userInfo"
-        )
+        url = f"{COGNITO_BASE_URL}/oauth2/userInfo"
         return await self._request("GET", url)
 
     async def async_get_networks(
