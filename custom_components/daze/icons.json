@@ -1,0 +1,42 @@
+{
+  "entity": {
+    "sensor": {
+      "instant_power": { "default": "mdi:flash" },
+      "delivered_energy": { "default": "mdi:lightning-bolt" },
+      "charging_current_l1": { "default": "mdi:current-ac" },
+      "charging_current_l2": { "default": "mdi:current-ac" },
+      "charging_current_l3": { "default": "mdi:current-ac" },
+      "ac_voltage_l1": { "default": "mdi:sine-wave" },
+      "ac_voltage_l2": { "default": "mdi:sine-wave" },
+      "ac_voltage_l3": { "default": "mdi:sine-wave" },
+      "board_temperature": { "default": "mdi:thermometer" },
+      "case_temperature": { "default": "mdi:thermometer" },
+      "evse_status": { "default": "mdi:ev-station" },
+      "grid_max_power": { "default": "mdi:transmission-tower" },
+      "is_photovoltaic": { "default": "mdi:solar-panel" },
+      "is_three_phase": { "default": "mdi:power-plug" },
+      "last_session_energy": { "default": "mdi:battery-charging" },
+      "last_session_duration": { "default": "mdi:timer-outline" },
+      "last_session_cost": { "default": "mdi:currency-eur" },
+      "last_session_start": { "default": "mdi:clock-start" },
+      "last_session_end": { "default": "mdi:clock-end" },
+      "lifetime_energy": { "default": "mdi:sigma" },
+      "total_sessions": { "default": "mdi:counter" },
+      "next_scheduled_charge": { "default": "mdi:calendar-clock" }
+    },
+    "switch": {
+      "charge_control": { "default": "mdi:ev-station" }
+    },
+    "number": {
+      "max_charging_current": { "default": "mdi:current-ac" }
+    },
+    "select": {
+      "operation_mode": { "default": "mdi:cog" }
+    }
+  },
+  "services": {
+    "start_charge": "mdi:play",
+    "stop_charge": "mdi:stop",
+    "set_charging_current": "mdi:current-ac"
+  }
+}
