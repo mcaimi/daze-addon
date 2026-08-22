@@ -20,7 +20,7 @@ from .coordinator import DazeDataUpdateCoordinator
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-    from homeassistant.helpers.entity_platform import AddEntitiesCallback
+    from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import DazeConfigEntry
 
@@ -175,7 +175,7 @@ class DazeWallboxSelectEntity(
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: DazeConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up Daze Wallbox select entity."""
     coordinator = entry.runtime_data.coordinator
