@@ -26,6 +26,8 @@ from . import DazeConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
+PARALLEL_UPDATES = 1
+
 # Industry-standard range for EVSE charging current limits
 NATIVE_MIN_VALUE = 6000  # 6 A
 NATIVE_MAX_VALUE = 32000  # 32 A

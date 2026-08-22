@@ -38,6 +38,8 @@ if TYPE_CHECKING:
 
 from . import DazeConfigEntry
 
+PARALLEL_UPDATES = 1
+
 
 # ------------------------------------------------------------------
 # EVSE status mapping

@@ -26,6 +26,8 @@ from . import DazeConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
+PARALLEL_UPDATES = 1
+
 # Operation mode options exposed in the HA frontend
 OPTION_FAST = "fast"
 OPTION_ECO = "eco"
