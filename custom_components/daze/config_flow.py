@@ -331,15 +331,11 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
         config_entry: ConfigEntry,
     ) -> OptionsFlow:
         """Create the options flow."""
-        return DazeOptionsFlowHandler(config_entry)
+        return DazeOptionsFlowHandler()
 
 
 class DazeOptionsFlowHandler(OptionsFlow):
     """Handle Daze Wallbox options."""
-
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialise options flow."""
-        self._config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
