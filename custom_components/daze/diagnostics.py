@@ -12,18 +12,17 @@ from typing import TYPE_CHECKING
 
 from homeassistant.helpers import entity_registry as er
 
-from .const import COGNITO_BASE_URL, DOMAIN
+from .const import COGNITO_BASE_URL
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
-    from .coordinator import DazeDataUpdateCoordinator
+from . import DazeConfigEntry
 
 
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: DazeConfigEntry,
 ) -> dict:
     """Return diagnostics for a Daze Wallbox config entry.
 
@@ -41,8 +40,7 @@ async def async_get_config_entry_diagnostics(
         A JSON-serialisable dict.
 
     """
-    entry_data = hass.data[DOMAIN][entry.entry_id]
-    coordinator: DazeDataUpdateCoordinator = entry_data["coordinator"]
+    coordinator = entry.runtime_data.coordinator
     api_client = coordinator.api_client
     auth_client = api_client.auth_client
 

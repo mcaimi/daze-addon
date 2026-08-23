@@ -33,9 +33,12 @@ from .const import DOMAIN
 from .coordinator import DazeDataUpdateCoordinator
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
-    from homeassistant.helpers.entity_platform import AddEntitiesCallback
+    from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+
+from . import DazeConfigEntry
+
+PARALLEL_UPDATES = 1
 
 
 # ------------------------------------------------------------------
@@ -239,7 +242,7 @@ SENSORS: tuple[DazeSensorEntityDescription, ...] = (
     DazeSensorEntityDescription(
         key="last_session_energy",
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.MEASUREMENT,
+        state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
         value_fn=lambda data: data.get("last_session_energy"),
     ),
@@ -397,17 +400,12 @@ class DazeWallboxSensorEntity(
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    entry: DazeConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up Daze Wallbox sensor entities.
-
-    Reads the coordinator and device info from ``hass.data``, then
-    creates and registers all sensor entities.
-    """
-    entry_data = hass.data[DOMAIN][entry.entry_id]
-    coordinator: DazeDataUpdateCoordinator = entry_data["coordinator"]
-    serial_number: str = entry_data["serial_number"]
+    """Set up Daze Wallbox sensor entities."""
+    coordinator = entry.runtime_data.coordinator
+    serial_number = entry.runtime_data.serial_number
 
     # Build device info matching the device registered in __init__.py
     device_info = DeviceInfo(

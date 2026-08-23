@@ -1,5 +1,7 @@
 """Constants for the Daze Wallbox integration."""
 
+from homeassistant.const import Platform
+
 DOMAIN = "daze"
 
 # API base URLs
@@ -29,7 +31,12 @@ DEFAULT_POLL_INTERVAL = 30  # seconds
 DEFAULT_TOKEN_EXPIRY_BUFFER = 60  # seconds
 
 # Platform list
-PLATFORMS = ["sensor", "switch", "number", "select"]
+PLATFORMS: list[Platform] = [
+    Platform.SENSOR,
+    Platform.SWITCH,
+    Platform.NUMBER,
+    Platform.SELECT,
+]
 
 # Service names
 SERVICE_START_CHARGE = "start_charge"
