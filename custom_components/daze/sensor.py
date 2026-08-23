@@ -242,7 +242,7 @@ SENSORS: tuple[DazeSensorEntityDescription, ...] = (
     DazeSensorEntityDescription(
         key="last_session_energy",
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.MEASUREMENT,
+        state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
         value_fn=lambda data: data.get("last_session_energy"),
     ),
