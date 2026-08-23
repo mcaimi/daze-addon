@@ -14,14 +14,19 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import DazeApiClient
 from .api.auth import AuthError, DazeAuthClient
+from .api.cognito_auth import CognitoAuthError, DazeCognitoAuthClient
 from .const import (
+    AUTH_METHOD_CREDENTIALS,
+    AUTH_METHOD_TOKEN,
     CONF_ACCESS_TOKEN,
+    CONF_AUTH_METHOD,
     CONF_DEVICE_PROFILE,
     CONF_EMAIL,
     CONF_EVSE_NAME,
     CONF_FIRMWARE_VERSION,
     CONF_NETWORK_NAME,
     CONF_NETWORK_UID,
+    CONF_PASSWORD,
     CONF_REFRESH_TOKEN,
     CONF_SERIAL_NUMBER,
     CONF_SOFTWARE_VERSION,
@@ -30,12 +35,31 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-STEP_USER_DATA_SCHEMA = vol.Schema(
+STEP_TOKEN_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_ACCESS_TOKEN): str,
         vol.Required(CONF_REFRESH_TOKEN): str,
     }
 )
+
+STEP_CREDENTIALS_DATA_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_EMAIL): str,
+        vol.Required(CONF_PASSWORD): str,
+    }
+)
+
+
+def _map_cognito_error(error_type: str | None) -> str:
+    """Map a Cognito IDP error type to a config flow error key."""
+    mapping = {
+        "NotAuthorizedException": "invalid_credentials",
+        "UserNotFoundException": "invalid_credentials",
+        "UserNotConfirmedException": "user_not_confirmed",
+        "PasswordResetRequiredException": "password_reset_required",
+        "TooManyRequestsException": "too_many_requests",
+    }
+    return mapping.get(error_type or "", "unknown")
 
 
 async def _validate_tokens(
@@ -89,9 +113,11 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         """Initialise the config flow."""
+        self._auth_method: str | None = None
         self._access_token: str | None = None
         self._refresh_token: str | None = None
         self._email: str | None = None
+        self._password: str | None = None
         self._networks: list[dict[str, Any]] = []
         self._network_uid: str | None = None
         self._network_name: str | None = None
@@ -102,16 +128,79 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
         self._software_version: str | None = None
 
     # ------------------------------------------------------------------
-    # Step 1: Token entry
+    # Step 1: Auth method selection
     # ------------------------------------------------------------------
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle the initial step — token entry.
+        """Handle the initial step — auth method selection."""
+        return self.async_show_menu(
+            step_id="user",
+            menu_options=["credentials", "token"],
+        )
 
-        The user provides their Daze access token and refresh token.
-        """
+    # ------------------------------------------------------------------
+    # Step 1a: Email/password authentication
+    # ------------------------------------------------------------------
+
+    async def async_step_credentials(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle email/password authentication via Cognito IDP."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            email = user_input[CONF_EMAIL]
+            password = user_input[CONF_PASSWORD]
+
+            try:
+                session = async_get_clientsession(self.hass)
+                auth_client = await DazeCognitoAuthClient.async_authenticate(
+                    session, email, password
+                )
+            except CognitoAuthError as err:
+                errors["base"] = _map_cognito_error(err.error_type)
+            except Exception:
+                _LOGGER.exception("Unexpected error during credential auth")
+                errors["base"] = "network_error"
+            else:
+                tokens = auth_client.get_tokens_for_store()
+                self._auth_method = AUTH_METHOD_CREDENTIALS
+                self._access_token = tokens["access_token"]
+                self._refresh_token = tokens["refresh_token"]
+                self._email = email
+                self._password = password
+                return await self.async_step_network()
+
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_EMAIL, default=self._email or vol.UNDEFINED
+                ): str,
+                vol.Required(CONF_PASSWORD): str,
+            }
+        )
+
+        if self.source == SOURCE_REAUTH:
+            self.context["title_placeholders"] = {
+                "name": self._get_reauth_entry().title
+            }
+
+        return self.async_show_form(
+            step_id="credentials",
+            data_schema=schema,
+            errors=errors,
+        )
+
+    # ------------------------------------------------------------------
+    # Step 1b: Token entry
+    # ------------------------------------------------------------------
+
+    async def async_step_token(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle access/refresh token authentication."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -128,11 +217,10 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected error during token validation")
                 errors["base"] = "network_error"
             else:
+                self._auth_method = AUTH_METHOD_TOKEN
                 self._access_token = info[CONF_ACCESS_TOKEN]
                 self._refresh_token = info[CONF_REFRESH_TOKEN]
                 self._email = info["email"]
-
-                # Proceed to network selection
                 return await self.async_step_network()
 
         if self.source == SOURCE_REAUTH:
@@ -141,9 +229,23 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
             }
 
         return self.async_show_form(
-            step_id="user",
-            data_schema=STEP_USER_DATA_SCHEMA,
+            step_id="token",
+            data_schema=STEP_TOKEN_DATA_SCHEMA,
             errors=errors,
+        )
+
+    # ------------------------------------------------------------------
+    # Auth client helper
+    # ------------------------------------------------------------------
+
+    def _create_auth_client(self) -> DazeAuthClient:
+        """Create the appropriate auth client for the selected method."""
+        if self._auth_method == AUTH_METHOD_CREDENTIALS:
+            return DazeCognitoAuthClient(
+                self._access_token, self._refresh_token  # type: ignore[arg-type]
+            )
+        return DazeAuthClient(
+            self._access_token, self._refresh_token  # type: ignore[arg-type]
         )
 
     # ------------------------------------------------------------------
@@ -159,9 +261,7 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
         # Fetch networks on first load
         if not self._networks:
             session = async_get_clientsession(self.hass)
-            auth_client = DazeAuthClient(
-                self._access_token, self._refresh_token  # type: ignore[arg-type]
-            )
+            auth_client = self._create_auth_client()
             api_client = DazeApiClient(auth_client, session)
 
             try:
@@ -239,6 +339,7 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
 
             # Create the config entry
             data = {
+                CONF_AUTH_METHOD: self._auth_method or AUTH_METHOD_TOKEN,
                 CONF_ACCESS_TOKEN: self._access_token,
                 CONF_REFRESH_TOKEN: self._refresh_token,
                 CONF_EMAIL: self._email,
@@ -250,6 +351,8 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_FIRMWARE_VERSION: self._firmware_version,
                 CONF_SOFTWARE_VERSION: self._software_version,
             }
+            if self._auth_method == AUTH_METHOD_CREDENTIALS and self._password:
+                data[CONF_PASSWORD] = self._password
 
             if self.source == SOURCE_REAUTH:
                 return self.async_update_reload_and_abort(
@@ -267,9 +370,7 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
 
         # Fetch EVSE info to populate confirmation details
         session = async_get_clientsession(self.hass)
-        auth_client = DazeAuthClient(
-            self._access_token, self._refresh_token  # type: ignore[arg-type]
-        )
+        auth_client = self._create_auth_client()
         api_client = DazeApiClient(auth_client, session)
 
         try:
@@ -322,8 +423,14 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reauth(
         self, entry_data: dict[str, Any]
     ) -> FlowResult:
-        """Handle re-authentication when tokens are expired/invalid."""
-        return await self.async_step_user()
+        """Handle re-authentication — routes to the correct auth step."""
+        self._auth_method = entry_data.get(
+            CONF_AUTH_METHOD, AUTH_METHOD_TOKEN
+        )
+        self._email = entry_data.get(CONF_EMAIL)
+        if self._auth_method == AUTH_METHOD_CREDENTIALS:
+            return await self.async_step_credentials()
+        return await self.async_step_token()
 
     @staticmethod
     @callback

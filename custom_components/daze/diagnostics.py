@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from homeassistant.helpers import entity_registry as er
 
-from .const import COGNITO_BASE_URL
+from .const import AUTH_METHOD_TOKEN, COGNITO_BASE_URL, CONF_AUTH_METHOD
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -49,6 +49,7 @@ async def async_get_config_entry_diagnostics(
     return {
         "auth": {
             "issuer": COGNITO_BASE_URL,
+            "auth_method": entry.data.get(CONF_AUTH_METHOD, AUTH_METHOD_TOKEN),
             "token_expired": auth_client.is_token_expired(),
             "token_expiry_timestamp": auth_client.token_expiry,
             "token_age_seconds": (
