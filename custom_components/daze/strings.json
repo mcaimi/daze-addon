@@ -3,6 +3,22 @@
     "title": "Daze Wallbox",
     "step": {
       "user": {
+        "title": "Authentication Method",
+        "description": "Choose how to authenticate with your Daze account.",
+        "menu_options": {
+          "credentials": "Email & Password",
+          "token": "Access Token & Refresh Token (Advanced)"
+        }
+      },
+      "credentials": {
+        "title": "Daze Account Login",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        },
+        "description": "Enter your Daze account email and password."
+      },
+      "token": {
         "data": {
           "access_token": "Access Token",
           "refresh_token": "Refresh Token"
@@ -25,6 +41,10 @@
     },
     "error": {
       "invalid_token": "The provided tokens are invalid or expired. Please check and try again.",
+      "invalid_credentials": "Incorrect email or password. Please check and try again.",
+      "user_not_confirmed": "This email address has not been confirmed. Please check your email for a confirmation link from Daze.",
+      "password_reset_required": "A password reset is required. Please reset your password via the Daze app or web portal first.",
+      "too_many_requests": "Too many authentication attempts. Please wait a few minutes and try again.",
       "network_error": "Could not connect to the Daze API. Please check your internet connection and try again.",
       "no_networks": "No networks found for this account.",
       "no_evses": "No wallbox found in the selected network.",
@@ -37,7 +57,7 @@
   },
   "reauth": {
     "title": "Re-authenticate Daze Wallbox",
-    "description": "Your Daze tokens have expired. Please enter new access and refresh tokens to restore the integration."
+    "description": "Your Daze authentication has expired. Please provide your credentials to restore the integration."
   },
   "services": {
     "set_charging_current": {
