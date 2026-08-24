@@ -15,6 +15,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .api import DazeApiClient
 from .api.auth import AuthError, DazeAuthClient
 from .api.cognito_auth import CognitoAuthError, DazeCognitoAuthClient
+from .models import Evse, Network
 from .const import (
     AUTH_METHOD_CREDENTIALS,
     AUTH_METHOD_TOKEN,
@@ -97,7 +98,7 @@ async def _fetch_networks(
     hass: HomeAssistant,
     api_client: DazeApiClient,
     email: str,
-) -> list[dict[str, Any]]:
+) -> list[Network]:
     """Fetch available networks for the user."""
     try:
         return await api_client.async_get_networks(email)
@@ -118,7 +119,7 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
         self._refresh_token: str | None = None
         self._email: str | None = None
         self._password: str | None = None
-        self._networks: list[dict[str, Any]] = []
+        self._networks: list[Network] = []
         self._network_uid: str | None = None
         self._network_name: str | None = None
         self._evse_name: str | None = None
@@ -298,15 +299,15 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
             self._network_uid = user_input[CONF_NETWORK_UID]
             # Find the network name from the selected UID
             for net in self._networks:
-                if net.get("uid") == self._network_uid:
-                    self._network_name = net.get("name", "")
+                if net.uid == self._network_uid:
+                    self._network_name = net.name or ""
                     break
 
             return await self.async_step_confirm()
 
         # Build selector options from available networks
         network_options = {
-            net["uid"]: net.get("name", "Unknown")
+            net.uid: net.name or "Unknown"
             for net in self._networks
         }
 
@@ -393,12 +394,12 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
             )
 
         evse = evses[0]
-        original_evse_name = evse.get("evseName", "Daze Wallbox")
+        original_evse_name = evse.evse_name or "Daze Wallbox"
         self._evse_name = f"{original_evse_name} Daze"
-        self._serial_number = evse.get("serialNumber", "")
-        self._device_profile = evse.get("deviceProfile", "")
-        self._firmware_version = evse.get("firmwareVersion", "")
-        self._software_version = evse.get("softwareVersion", "")
+        self._serial_number = evse.serial_number or ""
+        self._device_profile = evse.device_profile or ""
+        self._firmware_version = evse.firmware_version or ""
+        self._software_version = evse.software_version or ""
 
         return self.async_show_form(
             step_id="confirm",

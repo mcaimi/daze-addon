@@ -6,6 +6,128 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+
+# ------------------------------------------------------------------
+# Response models — GET endpoints
+# ------------------------------------------------------------------
+
+
+@dataclass
+class Network:
+    """A network (installation) from the Daze API."""
+
+    uid: str
+    name: str | None = None
+    raw: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Network:
+        """Create a Network from the raw API response dict."""
+        return cls(
+            uid=str(data.get("uid", "")),
+            name=data.get("name"),
+            raw=data,
+        )
+
+
+@dataclass
+class Evse:
+    """An EVSE (charger) from the Daze API."""
+
+    evse_name: str | None = None
+    serial_number: str | None = None
+    device_profile: str | None = None
+    firmware_version: str | None = None
+    software_version: str | None = None
+    raw: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Evse:
+        """Create an Evse from the raw API response dict."""
+        return cls(
+            evse_name=data.get("evseName"),
+            serial_number=data.get("serialNumber"),
+            device_profile=data.get("deviceProfile"),
+            firmware_version=data.get("firmwareVersion"),
+            software_version=data.get("softwareVersion"),
+            raw=data,
+        )
+
+
+@dataclass
+class SocketRemoteInfo:
+    """Live socket remote info (metrics, state) from the Daze API."""
+
+    evse_status: str | None = None
+    instant_power_as_watt: float | None = None
+    delivered_energy_as_watt_hour: float | None = None
+    last_charging_current_instant_l1: float | None = None
+    last_charging_current_instant_l2: float | None = None
+    last_charging_current_instant_l3: float | None = None
+    last_ac_voltage_l1: float | None = None
+    last_ac_voltage_l2: float | None = None
+    last_ac_voltage_l3: float | None = None
+    board_temperature: float | None = None
+    case_temperature: float | None = None
+    grid_max_power: float | None = None
+    is_photovoltaic: bool | None = None
+    evse_is_three_phase: bool | None = None
+    max_external_charging_current_in_milli_amps: int | None = None
+    last_max_charging_current: int | None = None
+    eco_mode_enabled: bool | None = None
+    operation_mode: str | None = None
+    next_scheduled_charge: datetime | None = None
+    scheduled_charge_time: datetime | None = None
+    scheduled_start: datetime | None = None
+    schedule_time: datetime | None = None
+    raw: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SocketRemoteInfo:
+        """Create a SocketRemoteInfo from the raw API response dict."""
+        return cls(
+            evse_status=data.get("evseStatus"),
+            instant_power_as_watt=_safe_float(data.get("instantPowerAsWatt")),
+            delivered_energy_as_watt_hour=_safe_float(
+                data.get("deliveredEnergyAsWattHour")
+            ),
+            last_charging_current_instant_l1=_safe_float(
+                data.get("lastChargingCurrentInstantL1")
+            ),
+            last_charging_current_instant_l2=_safe_float(
+                data.get("lastChargingCurrentInstantL2")
+            ),
+            last_charging_current_instant_l3=_safe_float(
+                data.get("lastChargingCurrentInstantL3")
+            ),
+            last_ac_voltage_l1=_safe_float(data.get("lastACVoltageL1")),
+            last_ac_voltage_l2=_safe_float(data.get("lastACVoltageL2")),
+            last_ac_voltage_l3=_safe_float(data.get("lastACVoltageL3")),
+            board_temperature=_safe_float(data.get("boardTemperature")),
+            case_temperature=_safe_float(data.get("caseTemperature")),
+            grid_max_power=_safe_float(data.get("gridMaxPower")),
+            is_photovoltaic=data.get("isPhotovoltaic"),
+            evse_is_three_phase=data.get("evseIsThreePhase"),
+            max_external_charging_current_in_milli_amps=_safe_int(
+                data.get("maxExternalChargingCurrentInMilliAmps")
+            ),
+            last_max_charging_current=_safe_int(
+                data.get("lastMaxChargingCurrent")
+            ),
+            eco_mode_enabled=data.get("ecoModeEnabled"),
+            operation_mode=data.get("operationMode"),
+            next_scheduled_charge=_parse_datetime(
+                data.get("nextScheduledCharge")
+            ),
+            scheduled_charge_time=_parse_datetime(
+                data.get("scheduledChargeTime")
+            ),
+            scheduled_start=_parse_datetime(data.get("scheduledStart")),
+            schedule_time=_parse_datetime(data.get("scheduleTime")),
+            raw=data,
+        )
+
+
 # ------------------------------------------------------------------
 # Recharge session model
 # ------------------------------------------------------------------
@@ -83,3 +205,79 @@ def _safe_float(value: Any) -> float | None:
         return float(value)
     except (ValueError, TypeError):
         return None
+
+
+def _safe_int(value: Any) -> int | None:
+    """Safely convert a value to int, returning None on failure."""
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
+# ------------------------------------------------------------------
+# Coordinator data model
+# ------------------------------------------------------------------
+
+
+@dataclass
+class SessionComputedFields:
+    """Derived session sensor values computed by the coordinator."""
+
+    last_session_energy: float | None = None
+    last_session_duration: float | None = None
+    last_session_cost: float | None = None
+    last_session_start: datetime | None = None
+    last_session_end: datetime | None = None
+    lifetime_energy: float = 0.0
+    total_sessions: int = 0
+
+
+@dataclass
+class DazeCoordinatorData:
+    """Typed coordinator data combining socket info and session data."""
+
+    socket: SocketRemoteInfo
+    sessions: list[RechargeSession] = field(default_factory=list)
+    session_fields: SessionComputedFields = field(
+        default_factory=SessionComputedFields
+    )
+
+
+# ------------------------------------------------------------------
+# Request payload models — POST endpoints
+# ------------------------------------------------------------------
+
+
+@dataclass
+class SetMaxChargingCurrentRequest:
+    """Payload for POST .../maxExternalChargingCurrent."""
+
+    evse_serial_number: str
+    max_external_charging_current_in_milli_amps: int
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to the API-expected JSON shape."""
+        return {
+            "evseSerialNumber": self.evse_serial_number,
+            "maxExternalChargingCurrentInMilliAmps": (
+                self.max_external_charging_current_in_milli_amps
+            ),
+        }
+
+
+@dataclass
+class SetEcoModeRequest:
+    """Payload for POST .../ecoMode."""
+
+    evse_serial_number: str
+    eco_mode_enabled: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to the API-expected JSON shape."""
+        return {
+            "evseSerialNumber": self.evse_serial_number,
+            "ecoModeEnabled": self.eco_mode_enabled,
+        }

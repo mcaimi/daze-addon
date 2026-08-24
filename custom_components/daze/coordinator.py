@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -30,11 +29,13 @@ from .const import (
     DEFAULT_POLL_INTERVAL,
     DOMAIN,
 )
-from .models import RechargeSession
+from .models import (
+    DazeCoordinatorData,
+    RechargeSession,
+    SessionComputedFields,
+)
 
 _LOGGER = logging.getLogger(__name__)
-
-type DazeCoordinatorData = dict[str, Any]
 
 
 class DazeDataUpdateCoordinator(
@@ -129,7 +130,7 @@ class DazeDataUpdateCoordinator(
         self._total_updates += 1
 
         try:
-            data = await self._api_client.async_get_socket_remote_info(
+            socket_info = await self._api_client.async_get_socket_remote_info(
                 self._serial_number
             )
             _LOGGER.debug(
@@ -169,8 +170,6 @@ class DazeDataUpdateCoordinator(
 
         # Fetch session data (secondary — failures are non-fatal)
         sessions = await self._async_fetch_sessions()
-        data["sessions"] = sessions
-        data.update(self._compute_session_fields(sessions))
 
         _LOGGER.debug(
             "Coordinator data for %s: %d sessions loaded",
@@ -178,54 +177,48 @@ class DazeDataUpdateCoordinator(
             len(sessions),
         )
 
-        return data
+        return DazeCoordinatorData(
+            socket=socket_info,
+            sessions=sessions,
+            session_fields=self._compute_session_fields(sessions),
+        )
 
     @staticmethod
     def _compute_session_fields(
         sessions: list[RechargeSession],
-    ) -> dict[str, Any]:
+    ) -> SessionComputedFields:
         """Compute derived session sensor values from session list.
 
         Sessions are expected newest-first. "Last session" is the
         first entry (index 0).
 
         Returns:
-            A dict of computed fields to merge into coordinator data.
+            A SessionComputedFields instance.
 
         """
-        fields: dict[str, Any] = {
-            "last_session_energy": None,
-            "last_session_duration": None,
-            "last_session_cost": None,
-            "last_session_start": None,
-            "last_session_end": None,
-            "lifetime_energy": 0.0,
-            "total_sessions": len(sessions),
-        }
+        fields = SessionComputedFields(total_sessions=len(sessions))
 
         if not sessions:
             return fields
 
         last = sessions[0]
-        fields["last_session_energy"] = last.energy_wh
-        fields["last_session_cost"] = last.cost
-        fields["last_session_start"] = last.start_time
-        fields["last_session_end"] = last.end_time
+        fields.last_session_energy = last.energy_wh
+        fields.last_session_cost = last.cost
+        fields.last_session_start = last.start_time
+        fields.last_session_end = last.end_time
 
         if last.start_time and last.end_time:
             delta = last.end_time - last.start_time
-            fields["last_session_duration"] = delta.total_seconds() / 60.0
+            fields.last_session_duration = delta.total_seconds() / 60.0
         elif last.start_time:
-            # In-progress session — duration since start
             delta = datetime.now(timezone.utc) - last.start_time
-            fields["last_session_duration"] = delta.total_seconds() / 60.0
+            fields.last_session_duration = delta.total_seconds() / 60.0
 
-        # Compute lifetime energy from all sessions
         lifetime = 0.0
         for ses in sessions:
             if ses.energy_wh is not None:
                 lifetime += ses.energy_wh
-        fields["lifetime_energy"] = lifetime
+        fields.lifetime_energy = lifetime
 
         return fields
 
@@ -243,19 +236,17 @@ class DazeDataUpdateCoordinator(
 
         """
         try:
-            sessions_raw = (
+            sessions = (
                 await self._api_client.async_get_recharge_sessions(
                     self._network_uid,
                 )
             )
             _LOGGER.debug(
                 "Fetched %d recharge sessions for network %s",
-                len(sessions_raw),
+                len(sessions),
                 self._network_uid,
             )
-            return [
-                RechargeSession.from_dict(s) for s in sessions_raw
-            ]
+            return sessions
 
         except ApiAuthError:
             # Auth errors on session endpoint are unexpected (the

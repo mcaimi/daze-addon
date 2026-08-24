@@ -18,6 +18,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .api import ApiAuthError, ApiError
 from .const import DOMAIN
 from .coordinator import DazeDataUpdateCoordinator
+from .models import DazeCoordinatorData
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -37,7 +38,7 @@ OPTION_SCHEDULED = "scheduled"
 ATTR_OPTIONS = [OPTION_FAST, OPTION_ECO, OPTION_SCHEDULED]
 
 
-def _current_option_from_data(data: dict[str, Any]) -> str:
+def _current_option_from_data(data: DazeCoordinatorData) -> str:
     """Derive the current operation mode from coordinator data.
 
     Uses ``ecoModeEnabled`` and ``operationMode`` fields to determine
@@ -47,11 +48,11 @@ def _current_option_from_data(data: dict[str, Any]) -> str:
 
     Falls back to "fast" if no data is available.
     """
-    eco_enabled = data.get("ecoModeEnabled")
+    eco_enabled = data.socket.eco_mode_enabled
     if eco_enabled is True:
         return OPTION_ECO
 
-    mode = data.get("operationMode")
+    mode = data.socket.operation_mode
     if mode is not None:
         mode_str = str(mode).lower()
         if mode_str in ATTR_OPTIONS:

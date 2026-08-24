@@ -75,16 +75,12 @@ class DazeWallboxNumberEntity(
         if self.coordinator.data is None:
             return None
 
-        # Primary field, then fallback
-        value = self.coordinator.data.get(
-            "maxExternalChargingCurrentInMilliAmps"
-        )
-        if value is not None:
-            return int(value)
+        socket = self.coordinator.data.socket
+        if socket.max_external_charging_current_in_milli_amps is not None:
+            return socket.max_external_charging_current_in_milli_amps
 
-        value = self.coordinator.data.get("lastMaxChargingCurrent")
-        if value is not None:
-            return int(value)
+        if socket.last_max_charging_current is not None:
+            return socket.last_max_charging_current
 
         return None
 

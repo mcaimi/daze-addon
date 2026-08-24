@@ -9,6 +9,14 @@ from aiohttp import ClientSession
 from aiohttp.client_exceptions import ClientError
 
 from ..const import API_BASE_URL, COGNITO_BASE_URL
+from ..models import (
+    Evse,
+    Network,
+    RechargeSession,
+    SetEcoModeRequest,
+    SetMaxChargingCurrentRequest,
+    SocketRemoteInfo,
+)
 from .auth import AuthError, DazeAuthClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -220,7 +228,7 @@ class DazeApiClient:
 
     async def async_get_networks(
         self, email: str
-    ) -> list[dict[str, Any]]:
+    ) -> list[Network]:
         """Fetch the list of networks (installations) for a user.
 
         GET /v3/users/{email}/networks?includeStats=true
@@ -229,16 +237,16 @@ class DazeApiClient:
             email: The user's email address from Cognito userInfo.
 
         Returns:
-            List of network objects.
+            List of Network objects.
 
         """
         url = f"{API_BASE_URL}/users/{email}/networks?includeStats=true"
         data = await self._request("GET", url)
-        return data.get("data", [])
+        return [Network.from_dict(n) for n in data.get("data", [])]
 
     async def async_get_evses(
         self, network_uid: str
-    ) -> list[dict[str, Any]]:
+    ) -> list[Evse]:
         """Fetch EVSEs (chargers) for a given network.
 
         GET /v3/networks/{uid}/evses?includeEcoInfo=false
@@ -247,16 +255,16 @@ class DazeApiClient:
             network_uid: The unique ID of the network.
 
         Returns:
-            List of EVSE objects.
+            List of Evse objects.
 
         """
         url = f"{API_BASE_URL}/networks/{network_uid}/evses?includeEcoInfo=false"
         data = await self._request("GET", url)
-        return data.get("data", [])
+        return [Evse.from_dict(e) for e in data.get("data", [])]
 
     async def async_get_socket_remote_info(
         self, serial: str
-    ) -> dict[str, Any]:
+    ) -> SocketRemoteInfo:
         """Fetch live socket remote info (metrics, state).
 
         GET /v3/sockets/{serial}/remoteInfo?includeEcoInfo=true&includeNextSchedule=true
@@ -265,7 +273,7 @@ class DazeApiClient:
             serial: The serial number of the wallbox.
 
         Returns:
-            Socket remote info data dict.
+            SocketRemoteInfo instance.
 
         """
         url = (
@@ -273,7 +281,7 @@ class DazeApiClient:
             "?includeEcoInfo=true&includeNextSchedule=true"
         )
         data = await self._request("GET", url)
-        return data.get("data", {})
+        return SocketRemoteInfo.from_dict(data.get("data", {}))
 
     async def async_set_max_charging_current(
         self, serial: str, current_ma: int
@@ -294,11 +302,11 @@ class DazeApiClient:
             f"{API_BASE_URL}/evses/{serial}"
             "/configurations/maxExternalChargingCurrent"
         )
-        payload = {
-            "evseSerialNumber": serial,
-            "maxExternalChargingCurrentInMilliAmps": current_ma,
-        }
-        return await self._request("POST", url, json=payload)
+        payload = SetMaxChargingCurrentRequest(
+            evse_serial_number=serial,
+            max_external_charging_current_in_milli_amps=current_ma,
+        )
+        return await self._request("POST", url, json=payload.to_dict())
 
     async def async_set_eco_mode(
         self, serial: str, eco_mode_enabled: bool
@@ -319,11 +327,11 @@ class DazeApiClient:
             f"{API_BASE_URL}/evses/{serial}"
             "/configurations/ecoMode"
         )
-        payload = {
-            "evseSerialNumber": serial,
-            "ecoModeEnabled": eco_mode_enabled,
-        }
-        return await self._request("POST", url, json=payload)
+        payload = SetEcoModeRequest(
+            evse_serial_number=serial,
+            eco_mode_enabled=eco_mode_enabled,
+        )
+        return await self._request("POST", url, json=payload.to_dict())
 
     async def async_start_charge(self, serial: str) -> dict[str, Any]:
         """Start charging on a wallbox.
@@ -357,7 +365,7 @@ class DazeApiClient:
 
     async def async_get_recharge_sessions(
         self, network_uid: str, limit: int = 1000
-    ) -> list[dict[str, Any]]:
+    ) -> list[RechargeSession]:
         """Fetch recharge session history for a network.
 
         GET /v3/networks/{uid}/rechargeSessions
@@ -367,7 +375,7 @@ class DazeApiClient:
             limit: Maximum number of sessions to return (default 1000).
 
         Returns:
-            List of recharge session objects.
+            List of RechargeSession objects.
 
         """
         url = (
@@ -375,4 +383,6 @@ class DazeApiClient:
             f"/rechargeSessions?TotalLimit={limit}"
         )
         data = await self._request("GET", url)
-        return data.get("data", [])
+        return [
+            RechargeSession.from_dict(s) for s in data.get("data", [])
+        ]
