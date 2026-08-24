@@ -18,8 +18,12 @@ from homeassistant.helpers.update_coordinator import (
 
 from .api import ApiAuthError, ApiError, DazeApiClient
 from .api.auth import DazeAuthClient
+from .api.cognito_auth import DazeCognitoAuthClient
 from .const import (
+    AUTH_METHOD_CREDENTIALS,
+    AUTH_METHOD_TOKEN,
     CONF_ACCESS_TOKEN,
+    CONF_AUTH_METHOD,
     CONF_NETWORK_UID,
     CONF_REFRESH_TOKEN,
     CONF_SERIAL_NUMBER,
@@ -305,7 +309,13 @@ async def async_setup_coordinator(
     network_uid = entry.data[CONF_NETWORK_UID]
 
     session = async_get_clientsession(hass)
-    auth_client = DazeAuthClient(access_token, refresh_token)
+    auth_method = entry.data.get(CONF_AUTH_METHOD, AUTH_METHOD_TOKEN)
+    if auth_method == AUTH_METHOD_CREDENTIALS:
+        auth_client: DazeAuthClient = DazeCognitoAuthClient(
+            access_token, refresh_token
+        )
+    else:
+        auth_client = DazeAuthClient(access_token, refresh_token)
     api_client = DazeApiClient(auth_client, session)
 
     coordinator = DazeDataUpdateCoordinator(
