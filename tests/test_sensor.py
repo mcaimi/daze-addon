@@ -10,6 +10,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from custom_components.daze.models import (
+    DazeCoordinatorData,
+    SessionComputedFields,
+    SocketRemoteInfo,
+)
+
 # ------------------------------------------------------------------
 # Pure logic extracted from custom_components/daze/sensor.py
 # These are tested independently of the HA entity framework.
@@ -29,20 +35,24 @@ EVSE_STATUS_MAP: dict[str, str] = {
 }
 
 
-def get_evse_status(data: dict[str, Any]) -> str | None:
+def get_evse_status(data: DazeCoordinatorData) -> str | None:
     """Map raw EVSE status to a human-readable HA state."""
-    raw = data.get("evseStatus")
+    raw = data.socket.evse_status
     if raw is None:
         return None
     return EVSE_STATUS_MAP.get(str(raw).lower(), str(raw).lower())
 
 
-def presence_on_off(data: dict[str, Any], key: str) -> str | None:
+def presence_on_off(value: bool | None) -> str | None:
     """Return 'on' or 'off' for a boolean diagnostic field."""
-    val = data.get(key)
-    if val is None:
+    if value is None:
         return None
-    return "on" if bool(val) else "off"
+    return "on" if value else "off"
+
+
+def _make_data(**kwargs: Any) -> DazeCoordinatorData:
+    """Build a DazeCoordinatorData with the given SocketRemoteInfo fields."""
+    return DazeCoordinatorData(socket=SocketRemoteInfo(**kwargs))
 
 
 @dataclass
@@ -69,70 +79,70 @@ SENSOR_DEFS: tuple[SensorDef, ...] = (
         device_class="power",
         state_class="measurement",
         native_unit_of_measurement="W",
-        expected_field="instantPower",
+        expected_field="instant_power_as_watt",
     ),
     SensorDef(
         key="delivered_energy",
         device_class="energy",
         state_class="total_increasing",
         native_unit_of_measurement="Wh",
-        expected_field="deliveredEnergy",
+        expected_field="delivered_energy_as_watt_hour",
     ),
     SensorDef(
         key="charging_current_l1",
         device_class="current",
         state_class="measurement",
         native_unit_of_measurement="mA",
-        expected_field="phaseCurrentL1",
+        expected_field="last_charging_current_instant_l1",
     ),
     SensorDef(
         key="charging_current_l2",
         device_class="current",
         state_class="measurement",
         native_unit_of_measurement="mA",
-        expected_field="phaseCurrentL2",
+        expected_field="last_charging_current_instant_l2",
     ),
     SensorDef(
         key="charging_current_l3",
         device_class="current",
         state_class="measurement",
         native_unit_of_measurement="mA",
-        expected_field="phaseCurrentL3",
+        expected_field="last_charging_current_instant_l3",
     ),
     SensorDef(
         key="ac_voltage_l1",
         device_class="voltage",
         state_class="measurement",
         native_unit_of_measurement="V",
-        expected_field="phaseVoltageL1",
+        expected_field="last_ac_voltage_l1",
     ),
     SensorDef(
         key="ac_voltage_l2",
         device_class="voltage",
         state_class="measurement",
         native_unit_of_measurement="V",
-        expected_field="phaseVoltageL2",
+        expected_field="last_ac_voltage_l2",
     ),
     SensorDef(
         key="ac_voltage_l3",
         device_class="voltage",
         state_class="measurement",
         native_unit_of_measurement="V",
-        expected_field="phaseVoltageL3",
+        expected_field="last_ac_voltage_l3",
     ),
     SensorDef(
         key="board_temperature",
         device_class="temperature",
         state_class="measurement",
         native_unit_of_measurement="°C",
-        expected_field="boardTemperature",
+        expected_field="board_temperature",
     ),
     SensorDef(
         key="case_temperature",
         device_class="temperature",
         state_class="measurement",
         native_unit_of_measurement="°C",
-        expected_field="caseTemperature",
+        expected_field="case_temperature",
     ),
     SensorDef(
         key="evse_status",
@@ -144,7 +154,7 @@ SENSOR_DEFS: tuple[SensorDef, ...] = (
         device_class="power",
         native_unit_of_measurement="W",
         entity_category="diagnostic",
-        expected_field="gridMaxPower",
+        expected_field="grid_max_power",
     ),
     SensorDef(
         key="is_photovoltaic",
@@ -212,25 +222,27 @@ def _def_by_key(key: str) -> SensorDef:
 # Sample data
 # ------------------------------------------------------------------
 
-SAMPLE_DATA = {
-    "instantPower": 3500,
-    "deliveredEnergy": 15000,
-    "phaseCurrentL1": 5000,
-    "phaseCurrentL2": 5100,
-    "phaseCurrentL3": 4900,
-    "phaseVoltageL1": 230,
-    "phaseVoltageL2": 231,
-    "phaseVoltageL3": 229,
-    "boardTemperature": 32,
-    "caseTemperature": 28,
-    "evseStatus": "charging",
-    "gridMaxPower": 22000,
-    "is_photovoltaic": True,
-    "is_three_phase": False,
-}
+SAMPLE_SOCKET = SocketRemoteInfo(
+    instant_power_as_watt=3500.0,
+    delivered_energy_as_watt_hour=15000.0,
+    last_charging_current_instant_l1=5000.0,
+    last_charging_current_instant_l2=5100.0,
+    last_charging_current_instant_l3=4900.0,
+    last_ac_voltage_l1=230.0,
+    last_ac_voltage_l2=231.0,
+    last_ac_voltage_l3=229.0,
+    board_temperature=32.0,
+    case_temperature=28.0,
+    evse_status="charging",
+    grid_max_power=22000.0,
+    is_photovoltaic=True,
+    evse_is_three_phase=False,
+)
 
-NULL_DATA = dict.fromkeys(SAMPLE_DATA, None)
-EMPTY_DATA: dict[str, Any] = {}
+SAMPLE_DATA = DazeCoordinatorData(socket=SAMPLE_SOCKET)
+NULL_SOCKET = SocketRemoteInfo()
+NULL_DATA = DazeCoordinatorData(socket=NULL_SOCKET)
+EMPTY_DATA = DazeCoordinatorData(socket=SocketRemoteInfo())
 
 
 # ==================================================================
@@ -283,103 +295,96 @@ class TestSensorDefinitions:
 class TestValueExtraction:
     """Verify value_fn lambdas extract correct fields from data."""
 
-    def _check(self, key: str, expected: Any) -> None:
-        s = _def_by_key(key)
-        val = SAMPLE_DATA.get(s.expected_field) if s.expected_field else None
-        assert val == expected, f"{key}: expected {expected}, got {val}"
-
     def test_instant_power(self) -> None:
-        assert SAMPLE_DATA["instantPower"] == 3500
+        assert SAMPLE_DATA.socket.instant_power_as_watt == 3500.0
 
     def test_delivered_energy(self) -> None:
-        assert SAMPLE_DATA["deliveredEnergy"] == 15000
+        assert SAMPLE_DATA.socket.delivered_energy_as_watt_hour == 15000.0
 
     def test_charging_current_l1(self) -> None:
-        assert SAMPLE_DATA["phaseCurrentL1"] == 5000
+        assert SAMPLE_DATA.socket.last_charging_current_instant_l1 == 5000.0
 
     def test_charging_current_l2(self) -> None:
-        assert SAMPLE_DATA["phaseCurrentL2"] == 5100
+        assert SAMPLE_DATA.socket.last_charging_current_instant_l2 == 5100.0
 
     def test_charging_current_l3(self) -> None:
-        assert SAMPLE_DATA["phaseCurrentL3"] == 4900
+        assert SAMPLE_DATA.socket.last_charging_current_instant_l3 == 4900.0
 
     def test_ac_voltage_l1(self) -> None:
-        assert SAMPLE_DATA["phaseVoltageL1"] == 230
+        assert SAMPLE_DATA.socket.last_ac_voltage_l1 == 230.0
 
     def test_ac_voltage_l2(self) -> None:
-        assert SAMPLE_DATA["phaseVoltageL2"] == 231
+        assert SAMPLE_DATA.socket.last_ac_voltage_l2 == 231.0
 
     def test_ac_voltage_l3(self) -> None:
-        assert SAMPLE_DATA["phaseVoltageL3"] == 229
+        assert SAMPLE_DATA.socket.last_ac_voltage_l3 == 229.0
 
     def test_board_temperature(self) -> None:
-        assert SAMPLE_DATA["boardTemperature"] == 32
+        assert SAMPLE_DATA.socket.board_temperature == 32.0
 
     def test_case_temperature(self) -> None:
-        assert SAMPLE_DATA["caseTemperature"] == 28
+        assert SAMPLE_DATA.socket.case_temperature == 28.0
 
     def test_grid_max_power(self) -> None:
-        assert SAMPLE_DATA["gridMaxPower"] == 22000
+        assert SAMPLE_DATA.socket.grid_max_power == 22000.0
 
     def test_is_photovoltaic_true(self) -> None:
-        assert SAMPLE_DATA["is_photovoltaic"] is True
+        assert SAMPLE_DATA.socket.is_photovoltaic is True
 
     def test_is_three_phase_false(self) -> None:
-        assert SAMPLE_DATA["is_three_phase"] is False
+        assert SAMPLE_DATA.socket.evse_is_three_phase is False
 
     def test_null_values(self) -> None:
         """Verify all fields can be None without crashing."""
-        for s in SENSOR_DEFS:
-            # Should just be able to read None from the data
-            pass
-        assert all(v is None for v in NULL_DATA.values())
+        assert NULL_DATA.socket.instant_power_as_watt is None
+        assert NULL_DATA.socket.evse_status is None
+        assert NULL_DATA.socket.board_temperature is None
 
     def test_missing_keys_return_none(self) -> None:
-        """Missing keys in data should be handled gracefully."""
+        """Default SocketRemoteInfo fields are None."""
+        empty = SocketRemoteInfo()
         for s in SENSOR_DEFS:
             if s.expected_field:
-                assert EMPTY_DATA.get(s.expected_field) is None
-            else:
-                pass
+                assert getattr(empty, s.expected_field) is None
 
 
 class TestEvseStatus:
     """Verify EVSE status mapping."""
 
     def test_charging(self) -> None:
-        assert get_evse_status({"evseStatus": "charging"}) == "charging"
+        assert get_evse_status(_make_data(evse_status="charging")) == "charging"
 
     def test_idle(self) -> None:
-        assert get_evse_status({"evseStatus": "idle"}) == "idle"
+        assert get_evse_status(_make_data(evse_status="idle")) == "idle"
 
     def test_paused(self) -> None:
-        assert get_evse_status({"evseStatus": "paused"}) == "paused"
+        assert get_evse_status(_make_data(evse_status="paused")) == "paused"
 
     def test_error(self) -> None:
-        assert get_evse_status({"evseStatus": "error"}) == "error"
+        assert get_evse_status(_make_data(evse_status="error")) == "error"
 
     def test_offline(self) -> None:
-        assert get_evse_status({"evseStatus": "offline"}) == "offline"
+        assert get_evse_status(_make_data(evse_status="offline")) == "offline"
 
     def test_aliases(self) -> None:
-        assert get_evse_status({"evseStatus": "waiting_for_car"}) == "idle"
-        assert get_evse_status({"evseStatus": "waiting_for_charge"}) == "idle"
-        assert get_evse_status({"evseStatus": "play_charge"}) == "charging"
-        assert get_evse_status({"evseStatus": "pause_charge"}) == "paused"
-        assert get_evse_status({"evseStatus": "stop_charge"}) == "idle"
+        assert get_evse_status(_make_data(evse_status="waiting_for_car")) == "idle"
+        assert get_evse_status(_make_data(evse_status="waiting_for_charge")) == "idle"
+        assert get_evse_status(_make_data(evse_status="play_charge")) == "charging"
+        assert get_evse_status(_make_data(evse_status="pause_charge")) == "paused"
+        assert get_evse_status(_make_data(evse_status="stop_charge")) == "idle"
 
     def test_case_insensitive(self) -> None:
-        assert get_evse_status({"evseStatus": "CHARGING"}) == "charging"
-        assert get_evse_status({"evseStatus": "Idle"}) == "idle"
+        assert get_evse_status(_make_data(evse_status="CHARGING")) == "charging"
+        assert get_evse_status(_make_data(evse_status="Idle")) == "idle"
 
     def test_unknown_passes_through(self) -> None:
-        assert get_evse_status({"evseStatus": "weird_value"}) == "weird_value"
+        assert get_evse_status(_make_data(evse_status="weird_value")) == "weird_value"
 
     def test_none_returns_none(self) -> None:
-        assert get_evse_status({"evseStatus": None}) is None
+        assert get_evse_status(_make_data(evse_status=None)) is None
 
     def test_missing_returns_none(self) -> None:
-        assert get_evse_status({}) is None
+        assert get_evse_status(_make_data()) is None
 
     def test_all_mapped_values_are_canonical(self) -> None:
         canonical = {"idle", "charging", "paused", "error", "offline"}
@@ -391,21 +396,10 @@ class TestPresenceOnOff:
     """Verify boolean presence/status mapping."""
 
     def test_true_maps_to_on(self) -> None:
-        assert presence_on_off({"test": True}, "test") == "on"
+        assert presence_on_off(True) == "on"
 
     def test_false_maps_to_off(self) -> None:
-        assert presence_on_off({"test": False}, "test") == "off"
+        assert presence_on_off(False) == "off"
 
     def test_none_maps_to_none(self) -> None:
-        assert presence_on_off({"test": None}, "test") is None
-
-    def test_missing_key_maps_to_none(self) -> None:
-        assert presence_on_off({}, "test") is None
-
-    def test_truthy_values_map_to_on(self) -> None:
-        assert presence_on_off({"test": 1}, "test") == "on"
-        assert presence_on_off({"test": "yes"}, "test") == "on"
-
-    def test_falsy_values_map_to_off(self) -> None:
-        assert presence_on_off({"test": 0}, "test") == "off"
-        assert presence_on_off({"test": ""}, "test") == "off"
+        assert presence_on_off(None) is None

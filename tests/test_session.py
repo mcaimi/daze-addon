@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from custom_components.daze.models import SessionComputedFields
+
 
 # ------------------------------------------------------------------
 # Pure logic from custom_components/daze/models.py
@@ -247,44 +249,36 @@ class TestSafeFloat:
 
 def compute_session_fields(
     sessions: list[RechargeSession],
-) -> dict[str, Any]:
+) -> SessionComputedFields:
     """Compute derived session sensor values from session list.
 
     Mirrors DazeDataUpdateCoordinator._compute_session_fields.
     """
     from datetime import datetime, timezone
 
-    fields: dict[str, Any] = {
-        "last_session_energy": None,
-        "last_session_duration": None,
-        "last_session_cost": None,
-        "last_session_start": None,
-        "last_session_end": None,
-        "lifetime_energy": 0.0,
-        "total_sessions": len(sessions),
-    }
+    fields = SessionComputedFields(total_sessions=len(sessions))
 
     if not sessions:
         return fields
 
     last = sessions[0]
-    fields["last_session_energy"] = last.energy_wh
-    fields["last_session_cost"] = last.cost
-    fields["last_session_start"] = last.start_time
-    fields["last_session_end"] = last.end_time
+    fields.last_session_energy = last.energy_wh
+    fields.last_session_cost = last.cost
+    fields.last_session_start = last.start_time
+    fields.last_session_end = last.end_time
 
     if last.start_time and last.end_time:
         delta = last.end_time - last.start_time
-        fields["last_session_duration"] = delta.total_seconds() / 60.0
+        fields.last_session_duration = delta.total_seconds() / 60.0
     elif last.start_time:
         delta = datetime.now(timezone.utc) - last.start_time
-        fields["last_session_duration"] = delta.total_seconds() / 60.0
+        fields.last_session_duration = delta.total_seconds() / 60.0
 
     lifetime = 0.0
     for ses in sessions:
         if ses.energy_wh is not None:
             lifetime += ses.energy_wh
-    fields["lifetime_energy"] = lifetime
+    fields.lifetime_energy = lifetime
 
     return fields
 
@@ -294,13 +288,13 @@ class TestComputeSessionFields:
 
     def test_empty_list(self) -> None:
         fields = compute_session_fields([])
-        assert fields["last_session_energy"] is None
-        assert fields["last_session_duration"] is None
-        assert fields["last_session_cost"] is None
-        assert fields["last_session_start"] is None
-        assert fields["last_session_end"] is None
-        assert fields["lifetime_energy"] == 0.0
-        assert fields["total_sessions"] == 0
+        assert fields.last_session_energy is None
+        assert fields.last_session_duration is None
+        assert fields.last_session_cost is None
+        assert fields.last_session_start is None
+        assert fields.last_session_end is None
+        assert fields.lifetime_energy == 0.0
+        assert fields.total_sessions == 0
 
     def test_single_completed_session(self) -> None:
         start = datetime(2026, 5, 1, 14, 0, 0, tzinfo=timezone.utc)
@@ -315,13 +309,13 @@ class TestComputeSessionFields:
             status="completed",
         )
         fields = compute_session_fields([session])
-        assert fields["last_session_energy"] == 15000.0
-        assert fields["last_session_cost"] == 3.75
-        assert fields["last_session_duration"] == 150.0  # 2.5 hours
-        assert fields["last_session_start"] == start
-        assert fields["last_session_end"] == end
-        assert fields["lifetime_energy"] == 15000.0
-        assert fields["total_sessions"] == 1
+        assert fields.last_session_energy == 15000.0
+        assert fields.last_session_cost == 3.75
+        assert fields.last_session_duration == 150.0  # 2.5 hours
+        assert fields.last_session_start == start
+        assert fields.last_session_end == end
+        assert fields.lifetime_energy == 15000.0
+        assert fields.total_sessions == 1
 
     def test_in_progress_session(self) -> None:
         """In-progress session: end_time is None, cost is None."""
@@ -335,14 +329,14 @@ class TestComputeSessionFields:
             status="charging",
         )
         fields = compute_session_fields([session])
-        assert fields["last_session_energy"] == 8000.0
-        assert fields["last_session_cost"] is None
-        assert fields["last_session_end"] is None
+        assert fields.last_session_energy == 8000.0
+        assert fields.last_session_cost is None
+        assert fields.last_session_end is None
         # Duration is computed from now - start (should be positive)
-        assert fields["last_session_duration"] is not None
-        assert fields["last_session_duration"] > 0
-        assert fields["lifetime_energy"] == 8000.0
-        assert fields["total_sessions"] == 1
+        assert fields.last_session_duration is not None
+        assert fields.last_session_duration > 0
+        assert fields.lifetime_energy == 8000.0
+        assert fields.total_sessions == 1
 
     def test_multiple_sessions_aggregation(self) -> None:
         start1 = datetime(2026, 5, 1, 14, 0, 0, tzinfo=timezone.utc)
@@ -366,11 +360,11 @@ class TestComputeSessionFields:
         ]
         fields = compute_session_fields(sessions)
         # Last session (newest first) = first in list
-        assert fields["last_session_energy"] == 10000.0
-        assert fields["last_session_cost"] == 2.50
+        assert fields.last_session_energy == 10000.0
+        assert fields.last_session_cost == 2.50
         # Lifetime energy sums both sessions
-        assert fields["lifetime_energy"] == 30000.0
-        assert fields["total_sessions"] == 2
+        assert fields.lifetime_energy == 30000.0
+        assert fields.total_sessions == 2
 
     def test_session_with_none_energy(self) -> None:
         """Sessions with None energy should not contribute to lifetime."""
@@ -385,9 +379,9 @@ class TestComputeSessionFields:
             ),
         ]
         fields = compute_session_fields(sessions)
-        assert fields["last_session_energy"] is None
-        assert fields["lifetime_energy"] == 0.0
-        assert fields["total_sessions"] == 1
+        assert fields.last_session_energy is None
+        assert fields.lifetime_energy == 0.0
+        assert fields.total_sessions == 1
 
     def test_session_without_start_end(self) -> None:
         """Session with no start/end times should not crash."""
@@ -398,9 +392,9 @@ class TestComputeSessionFields:
             energy_wh=5000.0,
         )
         fields = compute_session_fields([session])
-        assert fields["last_session_energy"] == 5000.0
-        assert fields["last_session_duration"] is None  # no start or end
-        assert fields["lifetime_energy"] == 5000.0
+        assert fields.last_session_energy == 5000.0
+        assert fields.last_session_duration is None  # no start or end
+        assert fields.lifetime_energy == 5000.0
 
     def test_hundreds_of_sessions(self) -> None:
         """Verify no performance issues with many sessions."""
@@ -416,7 +410,7 @@ class TestComputeSessionFields:
             for i in range(10000)
         ]
         fields = compute_session_fields(sessions)
-        assert fields["total_sessions"] == 10000
-        assert fields["lifetime_energy"] == sum(1000.0 * i for i in range(10000))
-        assert fields["last_session_energy"] == 0.0  # session 0
-        assert fields["last_session_cost"] == 0.0  # session 0
+        assert fields.total_sessions == 10000
+        assert fields.lifetime_energy == sum(1000.0 * i for i in range(10000))
+        assert fields.last_session_energy == 0.0  # session 0
+        assert fields.last_session_cost == 0.0  # session 0

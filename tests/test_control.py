@@ -9,6 +9,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from custom_components.daze.models import (
+    DazeCoordinatorData,
+    SocketRemoteInfo,
+)
+
 # ------------------------------------------------------------------
 # Pure logic extracted from custom_components/daze/switch.py
 # ------------------------------------------------------------------
@@ -16,11 +21,11 @@ from typing import Any
 CHARGING_STATE = "charging"
 
 
-def switch_is_on(data: dict[str, Any] | None) -> bool | None:
+def switch_is_on(data: DazeCoordinatorData | None) -> bool | None:
     """Derive switch is_on from coordinator evseStatus."""
     if data is None:
         return None
-    status = data.get("evseStatus")
+    status = data.socket.evse_status
     if status is None:
         return None
     return str(status).lower() == CHARGING_STATE
@@ -35,18 +40,17 @@ NATIVE_MAX_VALUE = 32000
 NATIVE_STEP = 100
 
 
-def number_native_value(data: dict[str, Any] | None) -> int | None:
+def number_native_value(data: DazeCoordinatorData | None) -> int | None:
     """Derive number native_value from coordinator data."""
     if data is None:
         return None
 
-    value = data.get("maxExternalChargingCurrentInMilliAmps")
-    if value is not None:
-        return int(value)
+    socket = data.socket
+    if socket.max_external_charging_current_in_milli_amps is not None:
+        return socket.max_external_charging_current_in_milli_amps
 
-    value = data.get("lastMaxChargingCurrent")
-    if value is not None:
-        return int(value)
+    if socket.last_max_charging_current is not None:
+        return socket.last_max_charging_current
 
     return None
 
@@ -67,16 +71,16 @@ OPTION_SCHEDULED = "scheduled"
 ATTR_OPTIONS = [OPTION_FAST, OPTION_ECO, OPTION_SCHEDULED]
 
 
-def select_current_option(data: dict[str, Any] | None) -> str | None:
+def select_current_option(data: DazeCoordinatorData | None) -> str | None:
     """Derive current operation mode from coordinator data."""
     if data is None:
         return None
 
-    eco_enabled = data.get("ecoModeEnabled")
+    eco_enabled = data.socket.eco_mode_enabled
     if eco_enabled is True:
         return OPTION_ECO
 
-    mode = data.get("operationMode")
+    mode = data.socket.operation_mode
     if mode is not None:
         mode_str = str(mode).lower()
         if mode_str in ATTR_OPTIONS:
@@ -101,64 +105,65 @@ def select_map_option(option: str) -> bool | None:
 
 
 # ------------------------------------------------------------------
+# Helper
+# ------------------------------------------------------------------
+
+
+def _make_data(**kwargs: Any) -> DazeCoordinatorData:
+    """Build a DazeCoordinatorData with the given SocketRemoteInfo fields."""
+    return DazeCoordinatorData(socket=SocketRemoteInfo(**kwargs))
+
+
+# ------------------------------------------------------------------
 # Sample data
 # ------------------------------------------------------------------
 
-SAMPLE_DATA_CHARGING = {
-    "evseStatus": "charging",
-    "maxExternalChargingCurrentInMilliAmps": 16000,
-    "ecoModeEnabled": False,
-    "operationMode": "fast",
-}
-
-SAMPLE_DATA_IDLE = {
-    "evseStatus": "idle",
-    "maxExternalChargingCurrentInMilliAmps": 16000,
-    "ecoModeEnabled": False,
-    "operationMode": "fast",
-}
-
-SAMPLE_DATA_ECO = {
-    "evseStatus": "charging",
-    "maxExternalChargingCurrentInMilliAmps": 12000,
-    "ecoModeEnabled": True,
-    "operationMode": "eco",
-}
-
-SAMPLE_DATA_FALLBACK_CURRENT = {
-    "evseStatus": "idle",
-    "lastMaxChargingCurrent": 6000,
-}
-
-SAMPLE_DATA_PAUSED = {
-    "evseStatus": "paused",
-    "maxExternalChargingCurrentInMilliAmps": 16000,
-    "ecoModeEnabled": False,
-    "operationMode": "fast",
-}
-
-SAMPLE_DATA_ERROR = {
-    "evseStatus": "error",
-    "maxExternalChargingCurrentInMilliAmps": 16000,
-}
-
-SAMPLE_DATA_OFFLINE = {
-    "evseStatus": "offline",
-    "maxExternalChargingCurrentInMilliAmps": 16000,
-}
-
-SAMPLE_DATA_NULL = dict.fromkeys(
-    {
-        "evseStatus",
-        "maxExternalChargingCurrentInMilliAmps",
-        "lastMaxChargingCurrent",
-        "ecoModeEnabled",
-        "operationMode",
-    },
-    None,
+SAMPLE_DATA_CHARGING = _make_data(
+    evse_status="charging",
+    max_external_charging_current_in_milli_amps=16000,
+    eco_mode_enabled=False,
+    operation_mode="fast",
 )
 
-EMPTY_DATA: dict[str, Any] = {}
+SAMPLE_DATA_IDLE = _make_data(
+    evse_status="idle",
+    max_external_charging_current_in_milli_amps=16000,
+    eco_mode_enabled=False,
+    operation_mode="fast",
+)
+
+SAMPLE_DATA_ECO = _make_data(
+    evse_status="charging",
+    max_external_charging_current_in_milli_amps=12000,
+    eco_mode_enabled=True,
+    operation_mode="eco",
+)
+
+SAMPLE_DATA_FALLBACK_CURRENT = _make_data(
+    evse_status="idle",
+    last_max_charging_current=6000,
+)
+
+SAMPLE_DATA_PAUSED = _make_data(
+    evse_status="paused",
+    max_external_charging_current_in_milli_amps=16000,
+    eco_mode_enabled=False,
+    operation_mode="fast",
+)
+
+SAMPLE_DATA_ERROR = _make_data(
+    evse_status="error",
+    max_external_charging_current_in_milli_amps=16000,
+)
+
+SAMPLE_DATA_OFFLINE = _make_data(
+    evse_status="offline",
+    max_external_charging_current_in_milli_amps=16000,
+)
+
+SAMPLE_DATA_NULL = _make_data()
+
+EMPTY_DATA = _make_data()
 
 
 # ==================================================================
@@ -185,8 +190,8 @@ class TestSwitchStateDerivation:
         assert switch_is_on(SAMPLE_DATA_OFFLINE) is False
 
     def test_case_insensitive(self) -> None:
-        assert switch_is_on({"evseStatus": "CHARGING"}) is True
-        assert switch_is_on({"evseStatus": "Charging"}) is True
+        assert switch_is_on(_make_data(evse_status="CHARGING")) is True
+        assert switch_is_on(_make_data(evse_status="Charging")) is True
 
     def test_none_data_returns_none(self) -> None:
         assert switch_is_on(None) is None
@@ -195,10 +200,10 @@ class TestSwitchStateDerivation:
         assert switch_is_on(EMPTY_DATA) is None
 
     def test_null_status_returns_none(self) -> None:
-        assert switch_is_on({"evseStatus": None}) is None
+        assert switch_is_on(_make_data(evse_status=None)) is None
 
     def test_unknown_status_returns_false(self) -> None:
-        assert switch_is_on({"evseStatus": "unknown"}) is False
+        assert switch_is_on(_make_data(evse_status="unknown")) is False
 
 
 class TestSwitchIdempotency:
@@ -241,10 +246,10 @@ class TestNumberStateDerivation:
 
     def test_primary_takes_precedence(self) -> None:
         """When both fields exist, primary wins."""
-        data = {
-            "maxExternalChargingCurrentInMilliAmps": 20000,
-            "lastMaxChargingCurrent": 6000,
-        }
+        data = _make_data(
+            max_external_charging_current_in_milli_amps=20000,
+            last_max_charging_current=6000,
+        )
         assert number_native_value(data) == 20000
 
     def test_none_data_returns_none(self) -> None:
@@ -255,11 +260,6 @@ class TestNumberStateDerivation:
 
     def test_null_values_returns_none(self) -> None:
         assert number_native_value(SAMPLE_DATA_NULL) is None
-
-    def test_handles_float_input(self) -> None:
-        data = {"maxExternalChargingCurrentInMilliAmps": 16000.0}
-        assert number_native_value(data) == 16000
-        assert isinstance(number_native_value(data), int)
 
 
 class TestNumberSkipApi:
@@ -304,15 +304,15 @@ class TestSelectStateDerivation:
 
     def test_eco_enabled_true_overrides_operation_mode(self) -> None:
         """ecoModeEnabled=true always means eco mode."""
-        data = {"ecoModeEnabled": True, "operationMode": "fast"}
+        data = _make_data(eco_mode_enabled=True, operation_mode="fast")
         assert select_current_option(data) == OPTION_ECO
 
     def test_scheduled_mode(self) -> None:
-        data = {"ecoModeEnabled": False, "operationMode": "scheduled"}
+        data = _make_data(eco_mode_enabled=False, operation_mode="scheduled")
         assert select_current_option(data) == OPTION_SCHEDULED
 
     def test_case_insensitive_operation_mode(self) -> None:
-        data = {"ecoModeEnabled": False, "operationMode": "ECO"}
+        data = _make_data(eco_mode_enabled=False, operation_mode="ECO")
         assert select_current_option(data) == OPTION_ECO
 
 
