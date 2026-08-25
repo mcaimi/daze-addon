@@ -37,6 +37,12 @@ OPTION_SCHEDULED = "scheduled"
 
 ATTR_OPTIONS = [OPTION_FAST, OPTION_ECO, OPTION_SCHEDULED]
 
+OPERATION_MODE_MAP: dict[int, str] = {
+    1: OPTION_ECO,
+    2: OPTION_SCHEDULED,
+    3: OPTION_FAST,
+}
+
 
 def _current_option_from_data(data: DazeCoordinatorData) -> str:
     """Derive the current operation mode from coordinator data.
@@ -44,7 +50,7 @@ def _current_option_from_data(data: DazeCoordinatorData) -> str:
     Uses ``ecoModeEnabled`` and ``operationMode`` fields to determine
     the current mode:
     - ``ecoModeEnabled`` is True → eco mode
-    - ``operationMode`` may indicate scheduled or fast otherwise
+    - ``operationMode`` integer maps via OPERATION_MODE_MAP
 
     Falls back to "fast" if no data is available.
     """
@@ -54,9 +60,13 @@ def _current_option_from_data(data: DazeCoordinatorData) -> str:
 
     mode = data.socket.operation_mode
     if mode is not None:
-        mode_str = str(mode).lower()
-        if mode_str in ATTR_OPTIONS:
-            return mode_str
+        mapped = OPERATION_MODE_MAP.get(mode)
+        if mapped is not None:
+            return mapped
+        _LOGGER.warning(
+            "Unknown operationMode value %r from API; defaulting to 'fast'",
+            mode,
+        )
 
     return OPTION_FAST
 
@@ -74,6 +84,7 @@ class DazeWallboxSelectEntity(
     """Select entity to choose the Daze wallbox operation mode."""
 
     _attr_has_entity_name = True
+    _attr_translation_key = "operation_mode"
     _attr_options = ATTR_OPTIONS
 
     def __init__(

@@ -135,6 +135,16 @@
       "last_session_end": {
         "name": "Last Session End"
       },
+      "last_session_average_power": {
+        "name": "Last Session Average Power"
+      },
+      "last_session_charge_time": {
+        "name": "Last Session Charge Time"
+      },
+      "last_session_currency": {
+        "name": "Last Session Currency",
+        "entity_category": "diagnostic"
+      },
       "lifetime_energy": {
         "name": "Lifetime Energy"
       },

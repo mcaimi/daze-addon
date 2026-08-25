@@ -18,14 +18,60 @@ class Network:
 
     uid: str
     name: str | None = None
+    description: str | None = None
+    address: str | None = None
+    city: str | None = None
+    zip_code: str | None = None
+    country: str | None = None
+    network_type: int | None = None
+    grid_is_three_phase: bool | None = None
+    supply_max_power: float | None = None
+    is_photovoltaic: bool | None = None
+    energy_cost: float | None = None
+    currency_code: str | None = None
+    currency_symbol: str | None = None
+    time_zone: str | None = None
+    eco_mode_enabled: bool | None = None
+    eco_mode_type: int | None = None
+    smart_tariff_enabled: bool | None = None
+    num_evses_in_network: int | None = None
+    num_users_in_network: int | None = None
+    is_admin: bool | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Network:
         """Create a Network from the raw API response dict."""
+        currency_raw = data.get("currency")
+        if isinstance(currency_raw, dict):
+            currency_code = currency_raw.get("code")
+            currency_symbol = currency_raw.get("symbol")
+        else:
+            currency_code = None
+            currency_symbol = None
+
         return cls(
             uid=str(data.get("uid", "")),
             name=data.get("name"),
+            description=data.get("description"),
+            address=data.get("address"),
+            city=data.get("city"),
+            zip_code=data.get("zipCode"),
+            country=data.get("country"),
+            network_type=_safe_int(data.get("networkType")),
+            grid_is_three_phase=data.get("gridIsThreePhase"),
+            supply_max_power=_safe_float(data.get("supplyMaxPower")),
+            is_photovoltaic=data.get("isPhotovoltaic"),
+            energy_cost=_safe_float(data.get("energyCost")),
+            currency_code=currency_code,
+            currency_symbol=currency_symbol,
+            time_zone=data.get("timeZone"),
+            eco_mode_enabled=data.get("ecoModeEnabled"),
+            eco_mode_type=_safe_int(data.get("ecoModeType")),
+            smart_tariff_enabled=data.get("smartTariffEnabled"),
+            num_evses_in_network=_safe_int(data.get("numEvsesInNetwork")),
+            num_users_in_network=_safe_int(data.get("numUsersInNetwork")),
+            is_admin=data.get("isAdmin"),
             raw=data,
         )
 
@@ -39,6 +85,18 @@ class Evse:
     device_profile: str | None = None
     firmware_version: str | None = None
     software_version: str | None = None
+    evse_is_three_phase: bool | None = None
+    supply_grid_max_power: float | None = None
+    max_external_charging_current_in_milli_amps: int | None = None
+    eco_mode_enabled: bool | None = None
+    operation_mode: int | None = None
+    last_status: int | None = None
+    active: bool | None = None
+    wifi_enabled: bool | None = None
+    wifi_ssid: str | None = None
+    warranty_expiration: datetime | None = None
+    scheduling: bool | None = None
+    is_dynamic_load_management_on: bool | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -50,15 +108,35 @@ class Evse:
             device_profile=data.get("deviceProfile"),
             firmware_version=data.get("firmwareVersion"),
             software_version=data.get("softwareVersion"),
+            evse_is_three_phase=data.get("evseIsThreePhase"),
+            supply_grid_max_power=_safe_float(data.get("supplyGridMaxPower")),
+            max_external_charging_current_in_milli_amps=_safe_int(
+                data.get("maxExternalChargingCurrentInMilliAmps")
+            ),
+            eco_mode_enabled=data.get("ecoModeEnabled"),
+            operation_mode=_safe_int(data.get("operationMode")),
+            last_status=_safe_int(data.get("lastStatus")),
+            active=data.get("active"),
+            wifi_enabled=data.get("wifiEnabled"),
+            wifi_ssid=data.get("wifiSSID"),
+            warranty_expiration=_parse_datetime(data.get("warrantyExpiration")),
+            scheduling=data.get("scheduling"),
+            is_dynamic_load_management_on=data.get("isDynamicLoadManagementOn"),
             raw=data,
         )
 
 
 @dataclass
 class SocketRemoteInfo:
-    """Live socket remote info (metrics, state) from the Daze API."""
+    """Live socket remote info (metrics, state) from the Daze API.
 
-    evse_status: str | None = None
+    The v3 API returned all fields at the top level. The current API
+    nests measurement fields inside a ``chargeSession`` sub-object and
+    uses ``evseState`` (int) instead of ``evseStatus`` (str).
+    ``from_dict`` handles both shapes.
+    """
+
+    evse_status: str | int | None = None
     instant_power_as_watt: float | None = None
     delivered_energy_as_watt_hour: float | None = None
     last_charging_current_instant_l1: float | None = None
@@ -75,55 +153,81 @@ class SocketRemoteInfo:
     max_external_charging_current_in_milli_amps: int | None = None
     last_max_charging_current: int | None = None
     eco_mode_enabled: bool | None = None
-    operation_mode: str | None = None
+    operation_mode: int | None = None
     next_scheduled_charge: datetime | None = None
     scheduled_charge_time: datetime | None = None
     scheduled_start: datetime | None = None
     schedule_time: datetime | None = None
+    active: bool | None = None
+    is_paused: bool | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SocketRemoteInfo:
-        """Create a SocketRemoteInfo from the raw API response dict."""
+        """Create a SocketRemoteInfo from the raw API response dict.
+
+        Measurement fields are looked up first in the ``chargeSession``
+        sub-object (current API), then at the top level (legacy v3).
+        """
+        charge = data.get("chargeSession") or {}
+
+        def _pick(key: str) -> Any:
+            """Return value from chargeSession if present, else top-level."""
+            if key in charge:
+                return charge[key]
+            return data.get(key)
+
+        schedule = data.get("nextScheduleInfo") or {}
+
         return cls(
-            evse_status=data.get("evseStatus"),
-            instant_power_as_watt=_safe_float(data.get("instantPowerAsWatt")),
+            evse_status=data.get("evseStatus") or data.get("evseState"),
+            instant_power_as_watt=_safe_float(_pick("instantPowerAsWatt")),
             delivered_energy_as_watt_hour=_safe_float(
-                data.get("deliveredEnergyAsWattHour")
+                _pick("deliveredEnergyAsWattHour")
             ),
             last_charging_current_instant_l1=_safe_float(
-                data.get("lastChargingCurrentInstantL1")
+                _pick("lastChargingCurrentInstantL1")
             ),
             last_charging_current_instant_l2=_safe_float(
-                data.get("lastChargingCurrentInstantL2")
+                _pick("lastChargingCurrentInstantL2")
             ),
             last_charging_current_instant_l3=_safe_float(
-                data.get("lastChargingCurrentInstantL3")
+                _pick("lastChargingCurrentInstantL3")
             ),
-            last_ac_voltage_l1=_safe_float(data.get("lastACVoltageL1")),
-            last_ac_voltage_l2=_safe_float(data.get("lastACVoltageL2")),
-            last_ac_voltage_l3=_safe_float(data.get("lastACVoltageL3")),
-            board_temperature=_safe_float(data.get("boardTemperature")),
-            case_temperature=_safe_float(data.get("caseTemperature")),
-            grid_max_power=_safe_float(data.get("gridMaxPower")),
+            last_ac_voltage_l1=_safe_float(_pick("lastACVoltageL1")),
+            last_ac_voltage_l2=_safe_float(_pick("lastACVoltageL2")),
+            last_ac_voltage_l3=_safe_float(_pick("lastACVoltageL3")),
+            board_temperature=_safe_float(_pick("boardTemperature")),
+            case_temperature=_safe_float(_pick("caseTemperature")),
+            grid_max_power=_safe_float(_pick("gridMaxPower")),
             is_photovoltaic=data.get("isPhotovoltaic"),
             evse_is_three_phase=data.get("evseIsThreePhase"),
             max_external_charging_current_in_milli_amps=_safe_int(
-                data.get("maxExternalChargingCurrentInMilliAmps")
+                _pick("maxExternalChargingCurrentInMilliAmps")
             ),
             last_max_charging_current=_safe_int(
-                data.get("lastMaxChargingCurrent")
+                _pick("lastMaxChargingCurrent")
             ),
             eco_mode_enabled=data.get("ecoModeEnabled"),
-            operation_mode=data.get("operationMode"),
+            operation_mode=_safe_int(data.get("operationMode")),
             next_scheduled_charge=_parse_datetime(
-                data.get("nextScheduledCharge")
+                schedule.get("nextScheduledCharge")
+                or data.get("nextScheduledCharge")
             ),
             scheduled_charge_time=_parse_datetime(
-                data.get("scheduledChargeTime")
+                schedule.get("scheduledChargeTime")
+                or data.get("scheduledChargeTime")
             ),
-            scheduled_start=_parse_datetime(data.get("scheduledStart")),
-            schedule_time=_parse_datetime(data.get("scheduleTime")),
+            scheduled_start=_parse_datetime(
+                schedule.get("scheduledStart")
+                or data.get("scheduledStart")
+            ),
+            schedule_time=_parse_datetime(
+                schedule.get("scheduleTime")
+                or data.get("scheduleTime")
+            ),
+            active=data.get("active"),
+            is_paused=data.get("isPaused"),
             raw=data,
         )
 
@@ -148,7 +252,6 @@ class RechargeSession:
     energy_wh: float | None = None
     cost: float | None = None
     currency: str | None = None
-    status: str | None = None
     evse_serial: str | None = None
     # v4-only fields
     average_power: float | None = None
@@ -163,6 +266,16 @@ class RechargeSession:
     evse_name: str | None = None
     is_average_power_valid: bool | None = None
     timezone: str | None = None
+    socket_serial_number: str | None = None
+    session_id: int | None = None
+    telemetry_date: datetime | None = None
+    rfid_serial_number: str | None = None
+    smart_tariff_session: dict[str, Any] | None = None
+    price_mul_by_thousand: int | None = None
+    price: float | None = None
+    is_admin: bool | None = None
+    stripe_session_id: str | None = None
+    session_details: list[Any] | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -189,7 +302,6 @@ class RechargeSession:
                 else data.get("totalCost")
             ),
             currency=currency,
-            status=data.get("status"),
             evse_serial=(
                 data.get("serialNumber") or data.get("evseSerialNumber")
             ),
@@ -207,6 +319,16 @@ class RechargeSession:
             evse_name=data.get("evseName"),
             is_average_power_valid=data.get("isAveragePowValid"),
             timezone=data.get("timezone"),
+            socket_serial_number=data.get("socketSerialNumber"),
+            session_id=_safe_int(data.get("sessionId")),
+            telemetry_date=_parse_datetime(data.get("telemetryDate")),
+            rfid_serial_number=data.get("rfidSerialNumber"),
+            smart_tariff_session=data.get("smartTariffSession"),
+            price_mul_by_thousand=_safe_int(data.get("priceMulByThousand")),
+            price=_safe_float(data.get("price")),
+            is_admin=data.get("isAdmin"),
+            stripe_session_id=data.get("stripeSessionId"),
+            session_details=data.get("sessionDetails"),
             raw=data,
         )
 
@@ -271,6 +393,10 @@ class SessionComputedFields:
     last_session_cost: float | None = None
     last_session_start: datetime | None = None
     last_session_end: datetime | None = None
+    last_session_average_power: float | None = None
+    last_session_charge_time: str | None = None
+    last_session_currency: str | None = None
+    last_session_currency_symbol: str | None = None
     lifetime_energy: float = 0.0
     total_sessions: int = 0
 

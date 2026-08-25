@@ -60,6 +60,14 @@ EVSE_STATUS_MAP: dict[str, str] = {
     "stop_charge": "idle",
 }
 
+EVSE_STATE_INT_MAP: dict[int, str] = {
+    0: "offline",
+    1: "idle",
+    2: "idle",
+    3: "charging",
+    4: "paused",
+    5: "error",
+}
 
 # ------------------------------------------------------------------
 # Helper functions
@@ -71,10 +79,9 @@ def _get_evse_status(data: DazeCoordinatorData) -> str | None:
     raw = data.socket.evse_status
     if raw is None:
         return None
+    if isinstance(raw, int):
+        return EVSE_STATE_INT_MAP.get(raw, str(raw))
     return EVSE_STATUS_MAP.get(str(raw).lower(), str(raw).lower())
-
-
-
 
 
 # ------------------------------------------------------------------
@@ -128,6 +135,7 @@ SENSORS: tuple[DazeSensorEntityDescription, ...] = (
     # --- Measurement sensors ---
     DazeSensorEntityDescription(
         key="instant_power",
+        translation_key="instant_power",
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfPower.WATT,
@@ -135,6 +143,7 @@ SENSORS: tuple[DazeSensorEntityDescription, ...] = (
     ),
     DazeSensorEntityDescription(
         key="delivered_energy",
+        translation_key="delivered_energy",
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
@@ -142,6 +151,7 @@ SENSORS: tuple[DazeSensorEntityDescription, ...] = (
     ),
     DazeSensorEntityDescription(
         key="charging_current_l1",
+        translation_key="charging_current_l1",
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfElectricCurrent.MILLIAMPERE,
@@ -149,6 +159,7 @@ SENSORS: tuple[DazeSensorEntityDescription, ...] = (
     ),
     DazeSensorEntityDescription(
         key="charging_current_l2",
+        translation_key="charging_current_l2",
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfElectricCurrent.MILLIAMPERE,
@@ -156,6 +167,7 @@ SENSORS: tuple[DazeSensorEntityDescription, ...] = (
     ),
     DazeSensorEntityDescription(
         key="charging_current_l3",
+        translation_key="charging_current_l3",
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfElectricCurrent.MILLIAMPERE,
@@ -163,6 +175,7 @@ SENSORS: tuple[DazeSensorEntityDescription, ...] = (
     ),
     DazeSensorEntityDescription(
         key="ac_voltage_l1",
+        translation_key="ac_voltage_l1",
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
@@ -170,6 +183,7 @@ SENSORS: tuple[DazeSensorEntityDescription, ...] = (
     ),
     DazeSensorEntityDescription(
         key="ac_voltage_l2",
+        translation_key="ac_voltage_l2",
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
@@ -177,6 +191,7 @@ SENSORS: tuple[DazeSensorEntityDescription, ...] = (
     ),
     DazeSensorEntityDescription(
         key="ac_voltage_l3",
+        translation_key="ac_voltage_l3",
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
@@ -184,6 +199,7 @@ SENSORS: tuple[DazeSensorEntityDescription, ...] = (
     ),
     DazeSensorEntityDescription(
         key="board_temperature",
+        translation_key="board_temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
@@ -191,6 +207,7 @@ SENSORS: tuple[DazeSensorEntityDescription, ...] = (
     ),
     DazeSensorEntityDescription(
         key="case_temperature",
+        translation_key="case_temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
@@ -199,6 +216,7 @@ SENSORS: tuple[DazeSensorEntityDescription, ...] = (
     # --- EVSE status sensor ---
     DazeSensorEntityDescription(
         key="evse_status",
+        translation_key="evse_status",
         device_class=SensorDeviceClass.ENUM,
         options=list(dict.fromkeys(EVSE_STATUS_MAP.values())),
         value_fn=_get_evse_status,
@@ -206,6 +224,7 @@ SENSORS: tuple[DazeSensorEntityDescription, ...] = (
     # --- Diagnostic sensors (network-level) ---
     DazeSensorEntityDescription(
         key="grid_max_power",
+        translation_key="grid_max_power",
         device_class=SensorDeviceClass.POWER,
         native_unit_of_measurement=UnitOfPower.WATT,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -213,6 +232,7 @@ SENSORS: tuple[DazeSensorEntityDescription, ...] = (
     ),
     DazeSensorEntityDescription(
         key="is_photovoltaic",
+        translation_key="is_photovoltaic",
         device_class=SensorDeviceClass.ENUM,
         entity_category=EntityCategory.DIAGNOSTIC,
         options=["on", "off"],
@@ -220,6 +240,7 @@ SENSORS: tuple[DazeSensorEntityDescription, ...] = (
     ),
     DazeSensorEntityDescription(
         key="is_three_phase",
+        translation_key="is_three_phase",
         device_class=SensorDeviceClass.ENUM,
         entity_category=EntityCategory.DIAGNOSTIC,
         options=["on", "off"],
@@ -228,6 +249,7 @@ SENSORS: tuple[DazeSensorEntityDescription, ...] = (
     # --- Session sensors ---
     DazeSensorEntityDescription(
         key="last_session_energy",
+        translation_key="last_session_energy",
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
@@ -235,29 +257,52 @@ SENSORS: tuple[DazeSensorEntityDescription, ...] = (
     ),
     DazeSensorEntityDescription(
         key="last_session_duration",
+        translation_key="last_session_duration",
         device_class=SensorDeviceClass.DURATION,
         native_unit_of_measurement=UnitOfTime.MINUTES,
         value_fn=lambda data: data.session_fields.last_session_duration,
     ),
     DazeSensorEntityDescription(
         key="last_session_cost",
+        translation_key="last_session_cost",
         device_class=SensorDeviceClass.MONETARY,
         native_unit_of_measurement="EUR",
         value_fn=lambda data: data.session_fields.last_session_cost,
     ),
     DazeSensorEntityDescription(
         key="last_session_start",
+        translation_key="last_session_start",
         device_class=SensorDeviceClass.TIMESTAMP,
         value_fn=lambda data: data.session_fields.last_session_start,
     ),
     DazeSensorEntityDescription(
         key="last_session_end",
+        translation_key="last_session_end",
         device_class=SensorDeviceClass.TIMESTAMP,
         value_fn=lambda data: data.session_fields.last_session_end,
+    ),
+    DazeSensorEntityDescription(
+        key="last_session_average_power",
+        translation_key="last_session_average_power",
+        device_class=SensorDeviceClass.POWER,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        value_fn=lambda data: data.session_fields.last_session_average_power,
+    ),
+    DazeSensorEntityDescription(
+        key="last_session_charge_time",
+        translation_key="last_session_charge_time",
+        value_fn=lambda data: data.session_fields.last_session_charge_time,
+    ),
+    DazeSensorEntityDescription(
+        key="last_session_currency",
+        translation_key="last_session_currency",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.session_fields.last_session_currency,
     ),
     # --- Aggregate counters ---
     DazeSensorEntityDescription(
         key="lifetime_energy",
+        translation_key="lifetime_energy",
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
@@ -265,12 +310,14 @@ SENSORS: tuple[DazeSensorEntityDescription, ...] = (
     ),
     DazeSensorEntityDescription(
         key="total_sessions",
+        translation_key="total_sessions",
         state_class=SensorStateClass.TOTAL_INCREASING,
         value_fn=lambda data: data.session_fields.total_sessions,
     ),
     # --- Diagnostic sensors ---
     DazeSensorEntityDescription(
         key="next_scheduled_charge",
+        translation_key="next_scheduled_charge",
         device_class=SensorDeviceClass.TIMESTAMP,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=_get_next_scheduled_charge,
@@ -282,14 +329,18 @@ SENSORS: tuple[DazeSensorEntityDescription, ...] = (
 # Sensors that restore state on HA restart
 # ------------------------------------------------------------------
 
-_RESTORE_STATE_KEYS: frozenset[str] = frozenset({
-    "delivered_energy",
-    "lifetime_energy",
-    "total_sessions",
-    "last_session_energy",
-    "last_session_cost",
-    "last_session_duration",
-})
+_RESTORE_STATE_KEYS: frozenset[str] = frozenset(
+    {
+        "delivered_energy",
+        "lifetime_energy",
+        "total_sessions",
+        "last_session_energy",
+        "last_session_cost",
+        "last_session_duration",
+        "last_session_average_power",
+        "last_session_charge_time",
+    }
+)
 """Sensor keys whose native_value should survive HA restarts.
 
 These are cumulative or infrequently-changing values where losing the

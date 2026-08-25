@@ -206,6 +206,10 @@ class DazeDataUpdateCoordinator(
         fields.last_session_cost = last.cost
         fields.last_session_start = last.start_time
         fields.last_session_end = last.end_time
+        fields.last_session_average_power = last.average_power
+        fields.last_session_charge_time = last.charge_time
+        fields.last_session_currency = last.currency
+        fields.last_session_currency_symbol = last.currency_symbol
 
         if last.start_time and last.end_time:
             delta = last.end_time - last.start_time
