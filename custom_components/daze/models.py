@@ -137,8 +137,9 @@ class SocketRemoteInfo:
 class RechargeSession:
     """A single recharge session from the Daze API.
 
-    All fields are optional since the API response structure may vary
-    (e.g., in-progress sessions lack end_time and cost).
+    Handles both v3 and v4 response shapes. All fields except
+    session_uid are optional since in-progress sessions lack
+    end_time and cost.
     """
 
     session_uid: str
@@ -149,31 +150,70 @@ class RechargeSession:
     currency: str | None = None
     status: str | None = None
     evse_serial: str | None = None
+    # v4-only fields
+    average_power: float | None = None
+    charge_time: str | None = None
+    computed_energy_cost_mul_by_thousand: int | None = None
+    currency_symbol: str | None = None
+    session_type: int | None = None
+    authentication_status: int | None = None
+    user_name: str | None = None
+    email: str | None = None
+    network_name: str | None = None
+    evse_name: str | None = None
+    is_average_power_valid: bool | None = None
+    timezone: str | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> RechargeSession:
-        """Create a RechargeSession from the raw API response dict.
+        """Create a RechargeSession from v3 or v4 API response dict."""
+        currency_raw = data.get("currency")
+        if isinstance(currency_raw, dict):
+            currency = currency_raw.get("code")
+            currency_symbol = currency_raw.get("symbol")
+        else:
+            currency = currency_raw
+            currency_symbol = None
 
-        Handles missing and None fields gracefully so partial sessions
-        (in-progress) and unexpected API shapes don't crash.
-        """
         return cls(
-            session_uid=str(data.get("sessionUid", "")),
+            session_uid=str(data.get("id") or data.get("sessionUid") or ""),
             start_time=_parse_datetime(data.get("startDate")),
             end_time=_parse_datetime(data.get("endDate")),
-            energy_wh=_safe_float(data.get("energyInWh")),
-            cost=_safe_float(data.get("totalCost")),
-            currency=data.get("currency"),
+            energy_wh=_safe_float(
+                data.get("totEnergy") if "totEnergy" in data
+                else data.get("energyInWh")
+            ),
+            cost=_safe_float(
+                data.get("computedEnergyCost") if "computedEnergyCost" in data
+                else data.get("totalCost")
+            ),
+            currency=currency,
             status=data.get("status"),
-            evse_serial=data.get("evseSerialNumber"),
+            evse_serial=(
+                data.get("serialNumber") or data.get("evseSerialNumber")
+            ),
+            average_power=_safe_float(data.get("averagePow")),
+            charge_time=data.get("chargeTime"),
+            computed_energy_cost_mul_by_thousand=_safe_int(
+                data.get("computedEnergyCostMulByThousand")
+            ),
+            currency_symbol=currency_symbol,
+            session_type=_safe_int(data.get("sessionType")),
+            authentication_status=_safe_int(data.get("authenticationStatus")),
+            user_name=data.get("user"),
+            email=data.get("email"),
+            network_name=data.get("networkName"),
+            evse_name=data.get("evseName"),
+            is_average_power_valid=data.get("isAveragePowValid"),
+            timezone=data.get("timezone"),
             raw=data,
         )
 
     @property
     def is_in_progress(self) -> bool:
         """Return True if this session has not ended."""
-        return self.end_time is None and self.status != "completed"
+        return self.end_time is None
 
 
 def _parse_datetime(value: Any) -> datetime | None:

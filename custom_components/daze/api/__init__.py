@@ -240,7 +240,7 @@ class DazeApiClient:
             List of Network objects.
 
         """
-        url = f"{API_BASE_URL}/users/{email}/networks?includeStats=true"
+        url = f"{API_BASE_URL}/v3/users/{email}/networks?includeStats=true"
         data = await self._request("GET", url)
         return [Network.from_dict(n) for n in data.get("data", [])]
 
@@ -258,7 +258,7 @@ class DazeApiClient:
             List of Evse objects.
 
         """
-        url = f"{API_BASE_URL}/networks/{network_uid}/evses?includeEcoInfo=false"
+        url = f"{API_BASE_URL}/v3/networks/{network_uid}/evses?includeEcoInfo=false"
         data = await self._request("GET", url)
         return [Evse.from_dict(e) for e in data.get("data", [])]
 
@@ -277,7 +277,7 @@ class DazeApiClient:
 
         """
         url = (
-            f"{API_BASE_URL}/sockets/{serial}/remoteInfo"
+            f"{API_BASE_URL}/v3/sockets/{serial}/remoteInfo"
             "?includeEcoInfo=true&includeNextSchedule=true"
         )
         data = await self._request("GET", url)
@@ -299,7 +299,7 @@ class DazeApiClient:
 
         """
         url = (
-            f"{API_BASE_URL}/evses/{serial}"
+            f"{API_BASE_URL}/v3/evses/{serial}"
             "/configurations/maxExternalChargingCurrent"
         )
         payload = SetMaxChargingCurrentRequest(
@@ -324,7 +324,7 @@ class DazeApiClient:
 
         """
         url = (
-            f"{API_BASE_URL}/evses/{serial}"
+            f"{API_BASE_URL}/v3/evses/{serial}"
             "/configurations/ecoMode"
         )
         payload = SetEcoModeRequest(
@@ -345,7 +345,7 @@ class DazeApiClient:
             The response dict.
 
         """
-        url = f"{API_BASE_URL}/sockets/{serial}/commands/playcharge"
+        url = f"{API_BASE_URL}/v3/sockets/{serial}/commands/playcharge"
         return await self._request("POST", url, json={})
 
     async def async_stop_charge(self, serial: str) -> dict[str, Any]:
@@ -360,7 +360,7 @@ class DazeApiClient:
             The response dict.
 
         """
-        url = f"{API_BASE_URL}/sockets/{serial}/commands/stopcharge"
+        url = f"{API_BASE_URL}/v3/sockets/{serial}/commands/stopcharge"
         return await self._request("POST", url, json={})
 
     async def async_get_recharge_sessions(
@@ -368,7 +368,7 @@ class DazeApiClient:
     ) -> list[RechargeSession]:
         """Fetch recharge session history for a network.
 
-        GET /v3/networks/{uid}/rechargeSessions
+        GET /v4/networks/{uid}/rechargeSessions
 
         Args:
             network_uid: The unique ID of the network.
@@ -379,10 +379,10 @@ class DazeApiClient:
 
         """
         url = (
-            f"{API_BASE_URL}/networks/{network_uid}"
-            f"/rechargeSessions?TotalLimit={limit}"
+            f"{API_BASE_URL}/v4/networks/{network_uid}"
+            f"/rechargeSessions?page=0&pageSize={limit}"
+            "&includeTelemetries=false"
         )
         data = await self._request("GET", url)
-        return [
-            RechargeSession.from_dict(s) for s in data.get("data", [])
-        ]
+        items = data.get("data", {}).get("items", [])
+        return [RechargeSession.from_dict(s) for s in items]
