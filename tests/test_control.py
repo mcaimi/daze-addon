@@ -70,6 +70,12 @@ OPTION_SCHEDULED = "scheduled"
 
 ATTR_OPTIONS = [OPTION_FAST, OPTION_ECO, OPTION_SCHEDULED]
 
+OPERATION_MODE_MAP: dict[int, str] = {
+    1: OPTION_ECO,
+    2: OPTION_SCHEDULED,
+    3: OPTION_FAST,
+}
+
 
 def select_current_option(data: DazeCoordinatorData | None) -> str | None:
     """Derive current operation mode from coordinator data."""
@@ -82,9 +88,9 @@ def select_current_option(data: DazeCoordinatorData | None) -> str | None:
 
     mode = data.socket.operation_mode
     if mode is not None:
-        mode_str = str(mode).lower()
-        if mode_str in ATTR_OPTIONS:
-            return mode_str
+        mapped = OPERATION_MODE_MAP.get(mode)
+        if mapped is not None:
+            return mapped
 
     return OPTION_FAST
 
@@ -122,21 +128,21 @@ SAMPLE_DATA_CHARGING = _make_data(
     evse_status="charging",
     max_external_charging_current_in_milli_amps=16000,
     eco_mode_enabled=False,
-    operation_mode="fast",
+    operation_mode=3,
 )
 
 SAMPLE_DATA_IDLE = _make_data(
     evse_status="idle",
     max_external_charging_current_in_milli_amps=16000,
     eco_mode_enabled=False,
-    operation_mode="fast",
+    operation_mode=3,
 )
 
 SAMPLE_DATA_ECO = _make_data(
     evse_status="charging",
     max_external_charging_current_in_milli_amps=12000,
     eco_mode_enabled=True,
-    operation_mode="eco",
+    operation_mode=1,
 )
 
 SAMPLE_DATA_FALLBACK_CURRENT = _make_data(
@@ -148,7 +154,7 @@ SAMPLE_DATA_PAUSED = _make_data(
     evse_status="paused",
     max_external_charging_current_in_milli_amps=16000,
     eco_mode_enabled=False,
-    operation_mode="fast",
+    operation_mode=3,
 )
 
 SAMPLE_DATA_ERROR = _make_data(
@@ -304,16 +310,21 @@ class TestSelectStateDerivation:
 
     def test_eco_enabled_true_overrides_operation_mode(self) -> None:
         """ecoModeEnabled=true always means eco mode."""
-        data = _make_data(eco_mode_enabled=True, operation_mode="fast")
+        data = _make_data(eco_mode_enabled=True, operation_mode=3)
         assert select_current_option(data) == OPTION_ECO
 
     def test_scheduled_mode(self) -> None:
-        data = _make_data(eco_mode_enabled=False, operation_mode="scheduled")
+        data = _make_data(eco_mode_enabled=False, operation_mode=2)
         assert select_current_option(data) == OPTION_SCHEDULED
 
-    def test_case_insensitive_operation_mode(self) -> None:
-        data = _make_data(eco_mode_enabled=False, operation_mode="ECO")
-        assert select_current_option(data) == OPTION_ECO
+    def test_operation_mode_integer_mapping(self) -> None:
+        assert select_current_option(_make_data(operation_mode=1)) == OPTION_ECO
+        assert select_current_option(_make_data(operation_mode=2)) == OPTION_SCHEDULED
+        assert select_current_option(_make_data(operation_mode=3)) == OPTION_FAST
+
+    def test_unknown_operation_mode_defaults_to_fast(self) -> None:
+        data = _make_data(eco_mode_enabled=False, operation_mode=99)
+        assert select_current_option(data) == OPTION_FAST
 
 
 class TestSelectOptionMapping:

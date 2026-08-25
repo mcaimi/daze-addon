@@ -7,72 +7,15 @@ importing the full HA runtime (matching existing test pattern).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from custom_components.daze.models import SessionComputedFields
-
-
-# ------------------------------------------------------------------
-# Pure logic from custom_components/daze/models.py
-# ------------------------------------------------------------------
-
-
-@dataclass
-class RechargeSession:
-    """A single recharge session from the Daze API."""
-
-    session_uid: str
-    start_time: datetime | None = None
-    end_time: datetime | None = None
-    energy_wh: float | None = None
-    cost: float | None = None
-    currency: str | None = None
-    status: str | None = None
-    evse_serial: str | None = None
-    raw: dict[str, Any] = field(default_factory=dict)
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> RechargeSession:
-        return cls(
-            session_uid=str(data.get("sessionUid", "")),
-            start_time=_parse_datetime(data.get("startDate")),
-            end_time=_parse_datetime(data.get("endDate")),
-            energy_wh=_safe_float(data.get("energyInWh")),
-            cost=_safe_float(data.get("totalCost")),
-            currency=data.get("currency"),
-            status=data.get("status"),
-            evse_serial=data.get("evseSerialNumber"),
-            raw=data,
-        )
-
-    @property
-    def is_in_progress(self) -> bool:
-        return self.end_time is None and self.status != "completed"
-
-
-def _parse_datetime(value: Any) -> datetime | None:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, (int, float)):
-        return datetime.fromtimestamp(value)
-    try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except (ValueError, TypeError):
-        pass
-    return None
-
-
-def _safe_float(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (ValueError, TypeError):
-        return None
+from custom_components.daze.models import (
+    RechargeSession,
+    SessionComputedFields,
+    _parse_datetime,
+    _safe_float,
+)
 
 
 # ------------------------------------------------------------------
@@ -117,6 +60,54 @@ TIMESTAMP_INT_DICT: dict[str, Any] = {
     "status": "completed",
 }
 
+# v4 API response shapes
+V4_COMPLETED_SESSION: dict[str, Any] = {
+    "id": "e47b1c3a-6f29-4d8e-b5a1-9c3d7e2f8a04",
+    "evseName": "Colonnina P1",
+    "serialNumber": "99XZ0402185",
+    "socketSerialNumber": "99XZ0402185",
+    "sessionId": 1790823951000,
+    "totEnergy": 1163,
+    "averagePow": 3460,
+    "chargeTime": "00:20:10",
+    "user": "Test User",
+    "email": "test@example.com",
+    "authenticationStatus": 1,
+    "sessionType": 4,
+    "networkName": "P1",
+    "rfidSerialNumber": "",
+    "startDate": "2026-08-24T08:34:07Z",
+    "endDate": "2026-08-24T08:54:34Z",
+    "telemetryDate": "2026-08-24T08:34:18.739406Z",
+    "computedEnergyCostMulByThousand": 348900,
+    "computedEnergyCost": 0.3489,
+    "currency": {"code": "EUR", "symbol": "€"},
+    "smartTariffSession": None,
+    "isAveragePowValid": True,
+    "priceMulByThousand": 0,
+    "price": 0,
+    "isAdmin": True,
+    "timezone": "Europe/Berlin",
+    "stripeSessionId": None,
+}
+
+V4_IN_PROGRESS_SESSION: dict[str, Any] = {
+    "id": "b83d5f17-a42c-49e6-8d0b-1e7f6c9a3b52",
+    "serialNumber": "99XZ0402185",
+    "socketSerialNumber": "99XZ0402185",
+    "totEnergy": 5000,
+    "averagePow": 3200,
+    "chargeTime": "01:30:00",
+    "user": "Test User",
+    "email": "test@example.com",
+    "startDate": "2026-08-24T10:00:00Z",
+    "endDate": None,
+    "computedEnergyCost": None,
+    "currency": {"code": "EUR", "symbol": "€"},
+    "isAveragePowValid": True,
+    "timezone": "Europe/Berlin",
+}
+
 
 # ==================================================================
 # Tests
@@ -132,7 +123,6 @@ class TestRechargeSessionFromDict:
         assert session.energy_wh == 15000
         assert session.cost == 3.75
         assert session.currency == "EUR"
-        assert session.status == "completed"
         assert session.evse_serial == "DAZE-12345"
         assert session.is_in_progress is False
 
@@ -151,7 +141,6 @@ class TestRechargeSessionFromDict:
         assert session.cost is None
         assert session.start_time is None
         assert session.end_time is None
-        # no end_time means in-progress (end_time None, status "")
         assert session.is_in_progress is True
 
     def test_partial_data(self) -> None:
@@ -266,6 +255,10 @@ def compute_session_fields(
     fields.last_session_cost = last.cost
     fields.last_session_start = last.start_time
     fields.last_session_end = last.end_time
+    fields.last_session_average_power = last.average_power
+    fields.last_session_charge_time = last.charge_time
+    fields.last_session_currency = last.currency
+    fields.last_session_currency_symbol = last.currency_symbol
 
     if last.start_time and last.end_time:
         delta = last.end_time - last.start_time
@@ -293,6 +286,10 @@ class TestComputeSessionFields:
         assert fields.last_session_cost is None
         assert fields.last_session_start is None
         assert fields.last_session_end is None
+        assert fields.last_session_average_power is None
+        assert fields.last_session_charge_time is None
+        assert fields.last_session_currency is None
+        assert fields.last_session_currency_symbol is None
         assert fields.lifetime_energy == 0.0
         assert fields.total_sessions == 0
 
@@ -306,7 +303,6 @@ class TestComputeSessionFields:
             energy_wh=15000.0,
             cost=3.75,
             currency="EUR",
-            status="completed",
         )
         fields = compute_session_fields([session])
         assert fields.last_session_energy == 15000.0
@@ -326,7 +322,6 @@ class TestComputeSessionFields:
             end_time=None,
             energy_wh=8000.0,
             cost=None,
-            status="charging",
         )
         fields = compute_session_fields([session])
         assert fields.last_session_energy == 8000.0
@@ -349,13 +344,11 @@ class TestComputeSessionFields:
                 session_uid="sess-001",
                 start_time=start1, end_time=end1,
                 energy_wh=10000.0, cost=2.50,
-                status="completed",
             ),
             RechargeSession(
                 session_uid="sess-002",
                 start_time=start2, end_time=end2,
                 energy_wh=20000.0, cost=5.00,
-                status="completed",
             ),
         ]
         fields = compute_session_fields(sessions)
@@ -375,7 +368,6 @@ class TestComputeSessionFields:
                 end_time=datetime(2026, 5, 1, 16, 0, 0, tzinfo=timezone.utc),
                 energy_wh=None,
                 cost=None,
-                status="completed",
             ),
         ]
         fields = compute_session_fields(sessions)
@@ -396,6 +388,15 @@ class TestComputeSessionFields:
         assert fields.last_session_duration is None  # no start or end
         assert fields.lifetime_energy == 5000.0
 
+    def test_v4_session_computed_fields(self) -> None:
+        """Verify new computed fields from v4 session data."""
+        session = RechargeSession.from_dict(V4_COMPLETED_SESSION)
+        fields = compute_session_fields([session])
+        assert fields.last_session_average_power == 3460.0
+        assert fields.last_session_charge_time == "00:20:10"
+        assert fields.last_session_currency == "EUR"
+        assert fields.last_session_currency_symbol == "€"
+
     def test_hundreds_of_sessions(self) -> None:
         """Verify no performance issues with many sessions."""
         sessions = [
@@ -405,7 +406,6 @@ class TestComputeSessionFields:
                 end_time=datetime(2026, 1, 1, 2, 0, 0, tzinfo=timezone.utc),
                 energy_wh=1000.0 * i,
                 cost=float(i),
-                status="completed",
             )
             for i in range(10000)
         ]
@@ -414,3 +414,112 @@ class TestComputeSessionFields:
         assert fields.lifetime_energy == sum(1000.0 * i for i in range(10000))
         assert fields.last_session_energy == 0.0  # session 0
         assert fields.last_session_cost == 0.0  # session 0
+
+
+# ==================================================================
+# v4 API response tests
+# ==================================================================
+
+
+class TestRechargeSessionFromDictV4:
+    """Verify RechargeSession.from_dict with v4 API shapes."""
+
+    def test_v4_completed_session(self) -> None:
+        session = RechargeSession.from_dict(V4_COMPLETED_SESSION)
+        assert session.session_uid == "e47b1c3a-6f29-4d8e-b5a1-9c3d7e2f8a04"
+        assert session.energy_wh == 1163.0
+        assert session.cost == 0.3489
+        assert session.currency == "EUR"
+        assert session.currency_symbol == "€"
+        assert session.evse_serial == "99XZ0402185"
+        assert session.is_in_progress is False
+        assert session.average_power == 3460.0
+        assert session.charge_time == "00:20:10"
+        assert session.computed_energy_cost_mul_by_thousand == 348900
+        assert session.session_type == 4
+        assert session.authentication_status == 1
+        assert session.user_name == "Test User"
+        assert session.email == "test@example.com"
+        assert session.network_name == "P1"
+        assert session.evse_name == "Colonnina P1"
+        assert session.is_average_power_valid is True
+        assert session.timezone == "Europe/Berlin"
+        assert session.socket_serial_number == "99XZ0402185"
+        assert session.session_id == 1790823951000
+        assert isinstance(session.telemetry_date, datetime)
+        assert session.rfid_serial_number == ""
+        assert session.smart_tariff_session is None
+        assert session.price_mul_by_thousand == 0
+        assert session.price == 0.0
+        assert session.is_admin is True
+        assert session.stripe_session_id is None
+
+    def test_v4_in_progress_session(self) -> None:
+        session = RechargeSession.from_dict(V4_IN_PROGRESS_SESSION)
+        assert session.session_uid == "b83d5f17-a42c-49e6-8d0b-1e7f6c9a3b52"
+        assert session.energy_wh == 5000.0
+        assert session.cost is None
+        assert session.end_time is None
+        assert session.is_in_progress is True
+        assert session.average_power == 3200.0
+        assert session.charge_time == "01:30:00"
+
+    def test_v4_currency_dict_extraction(self) -> None:
+        session = RechargeSession.from_dict(V4_COMPLETED_SESSION)
+        assert session.currency == "EUR"
+        assert session.currency_symbol == "€"
+
+    def test_v3_currency_string_preserved(self) -> None:
+        session = RechargeSession.from_dict(COMPLETED_SESSION)
+        assert session.currency == "EUR"
+        assert session.currency_symbol is None
+
+    def test_v4_fields_absent_in_v3(self) -> None:
+        session = RechargeSession.from_dict(COMPLETED_SESSION)
+        assert session.average_power is None
+        assert session.charge_time is None
+        assert session.computed_energy_cost_mul_by_thousand is None
+        assert session.session_type is None
+        assert session.authentication_status is None
+        assert session.user_name is None
+        assert session.email is None
+        assert session.network_name is None
+        assert session.evse_name is None
+        assert session.is_average_power_valid is None
+        assert session.timezone is None
+        assert session.socket_serial_number is None
+        assert session.session_id is None
+        assert session.telemetry_date is None
+        assert session.rfid_serial_number is None
+        assert session.smart_tariff_session is None
+        assert session.price_mul_by_thousand is None
+        assert session.price is None
+        assert session.is_admin is None
+        assert session.stripe_session_id is None
+        assert session.session_details is None
+
+    def test_v4_session_uid_uses_id_field(self) -> None:
+        session = RechargeSession.from_dict({"id": "uuid-v4", "sessionUid": "uuid-v3"})
+        assert session.session_uid == "uuid-v4"
+
+    def test_v4_energy_uses_tot_energy(self) -> None:
+        session = RechargeSession.from_dict(
+            {"id": "x", "totEnergy": 999, "energyInWh": 111}
+        )
+        assert session.energy_wh == 999.0
+
+    def test_v4_cost_uses_computed_energy_cost(self) -> None:
+        session = RechargeSession.from_dict(
+            {"id": "x", "computedEnergyCost": 1.23, "totalCost": 9.99}
+        )
+        assert session.cost == 1.23
+
+    def test_v4_raw_data_preserved(self) -> None:
+        session = RechargeSession.from_dict(V4_COMPLETED_SESSION)
+        assert session.raw == V4_COMPLETED_SESSION
+
+    def test_v4_from_dict_never_raises(self) -> None:
+        for raw in [V4_COMPLETED_SESSION, V4_IN_PROGRESS_SESSION, EMPTY_DICT,
+                     {}, {"strange": "data"}]:
+            session = RechargeSession.from_dict(raw)
+            assert isinstance(session, RechargeSession)
