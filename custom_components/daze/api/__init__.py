@@ -125,15 +125,13 @@ class DazeApiClient:
                         f"{response.status}: {body}"
                     )
 
-                return await response.json()
+                data = await response.json()
+                _LOGGER.debug("Daze API _request() RAW: %s", data)
+                return data
 
         except ClientError as err:
-            _LOGGER.warning(
-                "Network error on %s %s: %s", method, url, err
-            )
-            raise ApiError(
-                f"Network error on {method} {url}: {err}"
-            ) from err
+            _LOGGER.warning("Network error on %s %s: %s", method, url, err)
+            raise ApiError(f"Network error on {method} {url}: {err}") from err
 
     async def _handle_401(
         self,
@@ -158,9 +156,7 @@ class DazeApiClient:
         try:
             await self._auth.async_refresh_access_token(self._session)
         except AuthError as err:
-            _LOGGER.warning(
-                "Token refresh failed — triggering re-auth: %s", err
-            )
+            _LOGGER.warning("Token refresh failed — triggering re-auth: %s", err)
             raise ApiAuthError(
                 "Token refresh failed, re-authentication required"
             ) from err
@@ -207,12 +203,8 @@ class DazeApiClient:
                 return await response.json()
 
         except ClientError as err:
-            _LOGGER.warning(
-                "Network error on retry %s %s: %s", method, url, err
-            )
-            raise ApiError(
-                f"Network error on retry {method} {url}: {err}"
-            ) from err
+            _LOGGER.warning("Network error on retry %s %s: %s", method, url, err)
+            raise ApiError(f"Network error on retry {method} {url}: {err}") from err
 
     # ------------------------------------------------------------------
     # API endpoints
@@ -226,9 +218,7 @@ class DazeApiClient:
         url = f"{COGNITO_BASE_URL}/oauth2/userInfo"
         return await self._request("GET", url)
 
-    async def async_get_networks(
-        self, email: str
-    ) -> list[Network]:
+    async def async_get_networks(self, email: str) -> list[Network]:
         """Fetch the list of networks (installations) for a user.
 
         GET /v3/users/{email}/networks?includeStats=true
@@ -244,9 +234,7 @@ class DazeApiClient:
         data = await self._request("GET", url)
         return [Network.from_dict(n) for n in data.get("data", [])]
 
-    async def async_get_evses(
-        self, network_uid: str
-    ) -> list[Evse]:
+    async def async_get_evses(self, network_uid: str) -> list[Evse]:
         """Fetch EVSEs (chargers) for a given network.
 
         GET /v3/networks/{uid}/evses?includeEcoInfo=false
@@ -262,9 +250,7 @@ class DazeApiClient:
         data = await self._request("GET", url)
         return [Evse.from_dict(e) for e in data.get("data", [])]
 
-    async def async_get_socket_remote_info(
-        self, serial: str
-    ) -> SocketRemoteInfo:
+    async def async_get_socket_remote_info(self, serial: str) -> SocketRemoteInfo:
         """Fetch live socket remote info (metrics, state).
 
         GET /v3/sockets/{serial}/remoteInfo?includeEcoInfo=true&includeNextSchedule=true
@@ -323,10 +309,7 @@ class DazeApiClient:
             The response dict.
 
         """
-        url = (
-            f"{API_BASE_URL}/v3/evses/{serial}"
-            "/configurations/ecoMode"
-        )
+        url = f"{API_BASE_URL}/v3/evses/{serial}/configurations/ecoMode"
         payload = SetEcoModeRequest(
             evse_serial_number=serial,
             eco_mode_enabled=eco_mode_enabled,
@@ -378,9 +361,15 @@ class DazeApiClient:
             List of RechargeSession objects.
 
         """
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        # isoformat() with timespec='milliseconds' gives you .mmm precision
+        timestamp = now.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
         url = (
             f"{API_BASE_URL}/v4/networks/{network_uid}"
-            f"/rechargeSessions?page=0&pageSize={limit}"
+            f"/rechargeSessions?chargesEndDate={timestamp}&page=0&pageSize={limit}"
             "&includeTelemetries=false"
         )
         data = await self._request("GET", url)
