@@ -38,6 +38,7 @@ class DazeWallboxSwitchEntity(
     """Switch to start/stop charging on a Daze wallbox."""
 
     _attr_has_entity_name = True
+    _attr_translation_key = "charge_control"
 
     def __init__(
         self,
@@ -66,7 +67,7 @@ class DazeWallboxSwitchEntity(
         """Return True if the wallbox is currently charging."""
         if self.coordinator.data is None:
             return None
-        status = self.coordinator.data.get("evseStatus")
+        status = self.coordinator.data.socket.evse_status
         if status is None:
             return None
         return str(status).lower() == CHARGING_STATE

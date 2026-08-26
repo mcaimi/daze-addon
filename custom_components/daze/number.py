@@ -41,6 +41,7 @@ class DazeWallboxNumberEntity(
     """Number entity to set the max charging current on a Daze wallbox."""
 
     _attr_has_entity_name = True
+    _attr_translation_key = "max_charging_current"
     _attr_entity_category = EntityCategory.CONFIG
     _attr_native_min_value = NATIVE_MIN_VALUE
     _attr_native_max_value = NATIVE_MAX_VALUE
@@ -75,16 +76,12 @@ class DazeWallboxNumberEntity(
         if self.coordinator.data is None:
             return None
 
-        # Primary field, then fallback
-        value = self.coordinator.data.get(
-            "maxExternalChargingCurrentInMilliAmps"
-        )
-        if value is not None:
-            return int(value)
+        socket = self.coordinator.data.socket
+        if socket.max_external_charging_current_in_milli_amps is not None:
+            return socket.max_external_charging_current_in_milli_amps
 
-        value = self.coordinator.data.get("lastMaxChargingCurrent")
-        if value is not None:
-            return int(value)
+        if socket.last_max_charging_current is not None:
+            return socket.last_max_charging_current
 
         return None
 

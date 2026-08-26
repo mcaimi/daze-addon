@@ -6,7 +6,7 @@ DOMAIN = "daze"
 
 # API base URLs
 COGNITO_REGION = "eu-central-1"
-API_BASE_URL = "https://webapi.dazeservice.com/v3"
+API_BASE_URL = "https://webapi.dazeservice.com"
 COGNITO_BASE_URL = f"https://daze.auth.{COGNITO_REGION}.amazoncognito.com"
 
 # Cognito OAuth settings

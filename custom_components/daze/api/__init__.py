@@ -9,6 +9,14 @@ from aiohttp import ClientSession
 from aiohttp.client_exceptions import ClientError
 
 from ..const import API_BASE_URL, COGNITO_BASE_URL
+from ..models import (
+    Evse,
+    Network,
+    RechargeSession,
+    SetEcoModeRequest,
+    SetMaxChargingCurrentRequest,
+    SocketRemoteInfo,
+)
 from .auth import AuthError, DazeAuthClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -117,15 +125,13 @@ class DazeApiClient:
                         f"{response.status}: {body}"
                     )
 
-                return await response.json()
+                data = await response.json()
+                _LOGGER.debug("Daze API _request() RAW: %s", data)
+                return data
 
         except ClientError as err:
-            _LOGGER.warning(
-                "Network error on %s %s: %s", method, url, err
-            )
-            raise ApiError(
-                f"Network error on {method} {url}: {err}"
-            ) from err
+            _LOGGER.warning("Network error on %s %s: %s", method, url, err)
+            raise ApiError(f"Network error on {method} {url}: {err}") from err
 
     async def _handle_401(
         self,
@@ -150,9 +156,7 @@ class DazeApiClient:
         try:
             await self._auth.async_refresh_access_token(self._session)
         except AuthError as err:
-            _LOGGER.warning(
-                "Token refresh failed — triggering re-auth: %s", err
-            )
+            _LOGGER.warning("Token refresh failed — triggering re-auth: %s", err)
             raise ApiAuthError(
                 "Token refresh failed, re-authentication required"
             ) from err
@@ -199,12 +203,8 @@ class DazeApiClient:
                 return await response.json()
 
         except ClientError as err:
-            _LOGGER.warning(
-                "Network error on retry %s %s: %s", method, url, err
-            )
-            raise ApiError(
-                f"Network error on retry {method} {url}: {err}"
-            ) from err
+            _LOGGER.warning("Network error on retry %s %s: %s", method, url, err)
+            raise ApiError(f"Network error on retry {method} {url}: {err}") from err
 
     # ------------------------------------------------------------------
     # API endpoints
@@ -218,9 +218,7 @@ class DazeApiClient:
         url = f"{COGNITO_BASE_URL}/oauth2/userInfo"
         return await self._request("GET", url)
 
-    async def async_get_networks(
-        self, email: str
-    ) -> list[dict[str, Any]]:
+    async def async_get_networks(self, email: str) -> list[Network]:
         """Fetch the list of networks (installations) for a user.
 
         GET /v3/users/{email}/networks?includeStats=true
@@ -229,16 +227,14 @@ class DazeApiClient:
             email: The user's email address from Cognito userInfo.
 
         Returns:
-            List of network objects.
+            List of Network objects.
 
         """
-        url = f"{API_BASE_URL}/users/{email}/networks?includeStats=true"
+        url = f"{API_BASE_URL}/v3/users/{email}/networks?includeStats=true"
         data = await self._request("GET", url)
-        return data.get("data", [])
+        return [Network.from_dict(n) for n in data.get("data", [])]
 
-    async def async_get_evses(
-        self, network_uid: str
-    ) -> list[dict[str, Any]]:
+    async def async_get_evses(self, network_uid: str) -> list[Evse]:
         """Fetch EVSEs (chargers) for a given network.
 
         GET /v3/networks/{uid}/evses?includeEcoInfo=false
@@ -247,16 +243,14 @@ class DazeApiClient:
             network_uid: The unique ID of the network.
 
         Returns:
-            List of EVSE objects.
+            List of Evse objects.
 
         """
-        url = f"{API_BASE_URL}/networks/{network_uid}/evses?includeEcoInfo=false"
+        url = f"{API_BASE_URL}/v3/networks/{network_uid}/evses?includeEcoInfo=false"
         data = await self._request("GET", url)
-        return data.get("data", [])
+        return [Evse.from_dict(e) for e in data.get("data", [])]
 
-    async def async_get_socket_remote_info(
-        self, serial: str
-    ) -> dict[str, Any]:
+    async def async_get_socket_remote_info(self, serial: str) -> SocketRemoteInfo:
         """Fetch live socket remote info (metrics, state).
 
         GET /v3/sockets/{serial}/remoteInfo?includeEcoInfo=true&includeNextSchedule=true
@@ -265,15 +259,15 @@ class DazeApiClient:
             serial: The serial number of the wallbox.
 
         Returns:
-            Socket remote info data dict.
+            SocketRemoteInfo instance.
 
         """
         url = (
-            f"{API_BASE_URL}/sockets/{serial}/remoteInfo"
+            f"{API_BASE_URL}/v3/sockets/{serial}/remoteInfo"
             "?includeEcoInfo=true&includeNextSchedule=true"
         )
         data = await self._request("GET", url)
-        return data.get("data", {})
+        return SocketRemoteInfo.from_dict(data.get("data", {}))
 
     async def async_set_max_charging_current(
         self, serial: str, current_ma: int
@@ -291,14 +285,14 @@ class DazeApiClient:
 
         """
         url = (
-            f"{API_BASE_URL}/evses/{serial}"
+            f"{API_BASE_URL}/v3/evses/{serial}"
             "/configurations/maxExternalChargingCurrent"
         )
-        payload = {
-            "evseSerialNumber": serial,
-            "maxExternalChargingCurrentInMilliAmps": current_ma,
-        }
-        return await self._request("POST", url, json=payload)
+        payload = SetMaxChargingCurrentRequest(
+            evse_serial_number=serial,
+            max_external_charging_current_in_milli_amps=current_ma,
+        )
+        return await self._request("POST", url, json=payload.to_dict())
 
     async def async_set_eco_mode(
         self, serial: str, eco_mode_enabled: bool
@@ -315,15 +309,12 @@ class DazeApiClient:
             The response dict.
 
         """
-        url = (
-            f"{API_BASE_URL}/evses/{serial}"
-            "/configurations/ecoMode"
+        url = f"{API_BASE_URL}/v3/evses/{serial}/configurations/ecoMode"
+        payload = SetEcoModeRequest(
+            evse_serial_number=serial,
+            eco_mode_enabled=eco_mode_enabled,
         )
-        payload = {
-            "evseSerialNumber": serial,
-            "ecoModeEnabled": eco_mode_enabled,
-        }
-        return await self._request("POST", url, json=payload)
+        return await self._request("POST", url, json=payload.to_dict())
 
     async def async_start_charge(self, serial: str) -> dict[str, Any]:
         """Start charging on a wallbox.
@@ -337,7 +328,7 @@ class DazeApiClient:
             The response dict.
 
         """
-        url = f"{API_BASE_URL}/sockets/{serial}/commands/playcharge"
+        url = f"{API_BASE_URL}/v3/sockets/{serial}/commands/playcharge"
         return await self._request("POST", url, json={})
 
     async def async_stop_charge(self, serial: str) -> dict[str, Any]:
@@ -352,27 +343,35 @@ class DazeApiClient:
             The response dict.
 
         """
-        url = f"{API_BASE_URL}/sockets/{serial}/commands/stopcharge"
+        url = f"{API_BASE_URL}/v3/sockets/{serial}/commands/stopcharge"
         return await self._request("POST", url, json={})
 
     async def async_get_recharge_sessions(
         self, network_uid: str, limit: int = 1000
-    ) -> list[dict[str, Any]]:
+    ) -> list[RechargeSession]:
         """Fetch recharge session history for a network.
 
-        GET /v3/networks/{uid}/rechargeSessions
+        GET /v4/networks/{uid}/rechargeSessions
 
         Args:
             network_uid: The unique ID of the network.
             limit: Maximum number of sessions to return (default 1000).
 
         Returns:
-            List of recharge session objects.
+            List of RechargeSession objects.
 
         """
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        # isoformat() with timespec='milliseconds' gives you .mmm precision
+        timestamp = now.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
         url = (
-            f"{API_BASE_URL}/networks/{network_uid}"
-            f"/rechargeSessions?TotalLimit={limit}"
+            f"{API_BASE_URL}/v4/networks/{network_uid}"
+            f"/rechargeSessions?chargesEndDate={timestamp}&page=0&pageSize={limit}"
+            "&includeTelemetries=false"
         )
         data = await self._request("GET", url)
-        return data.get("data", [])
+        items = data.get("data", {}).get("items", [])
+        return [RechargeSession.from_dict(s) for s in items]

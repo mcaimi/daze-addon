@@ -42,3 +42,6 @@ credentials.*
 *.cert
 *.p12
 *.pfx
+
+# api dump
+apidump/**
