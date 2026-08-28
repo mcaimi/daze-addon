@@ -5,13 +5,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
-from homeassistant.helpers import config_validation as cv
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
-from pydaze import ApiAuthError, ApiError, DazeApiClient
+from pydaze import DazeApiClient
 
 from .const import (
     CONF_DEVICE_PROFILE,
@@ -22,9 +19,6 @@ from .const import (
     CONF_SOFTWARE_VERSION,
     DOMAIN,
     PLATFORMS,
-    SERVICE_SET_CHARGING_CURRENT,
-    SERVICE_START_CHARGE,
-    SERVICE_STOP_CHARGE,
 )
 from .coordinator import DazeDataUpdateCoordinator, async_setup_coordinator
 
@@ -42,112 +36,6 @@ class DazeRuntimeData:
 type DazeConfigEntry = ConfigEntry[DazeRuntimeData]
 
 _LOGGER = logging.getLogger(__name__)
-
-# ------------------------------------------------------------------
-# Service definitions
-# ------------------------------------------------------------------
-
-def _validate_step(step: int):
-    """Return a voluptuous validator that ensures a value is a multiple of step."""
-    def validator(value):
-        if value % step != 0:
-            raise vol.Invalid(f"must be a multiple of {step}")
-        return value
-    return validator
-
-
-SET_CHARGING_CURRENT_SCHEMA = vol.Schema({
-    vol.Required("current"): vol.All(
-        cv.positive_int,
-        vol.Range(min=6000, max=32000),
-        _validate_step(100),
-    ),
-})
-
-
-def _get_runtime_data(hass: HomeAssistant) -> DazeRuntimeData:
-    """Resolve runtime data from the first loaded config entry."""
-    entries = hass.config_entries.async_entries(DOMAIN)
-    for e in entries:
-        if hasattr(e, "runtime_data") and e.runtime_data is not None:
-            return e.runtime_data
-    raise HomeAssistantError("No loaded Daze config entry found")
-
-
-async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Set up the Daze Wallbox integration (services registration)."""
-
-    async def _handle_start_charge(call: ServiceCall) -> None:
-        """Start charging."""
-        rd = _get_runtime_data(hass)
-        try:
-            await rd.api_client.async_start_charge(rd.serial_number)
-            await rd.coordinator.async_request_refresh()
-        except ApiAuthError as err:
-            raise ConfigEntryAuthFailed(
-                "Authentication failed when starting charge. "
-                "Please re-authenticate the Daze integration."
-            ) from err
-        except ApiError as err:
-            raise HomeAssistantError(
-                f"Failed to start charging: {err}"
-            ) from err
-
-    async def _handle_stop_charge(call: ServiceCall) -> None:
-        """Stop charging."""
-        rd = _get_runtime_data(hass)
-        try:
-            await rd.api_client.async_stop_charge(rd.serial_number)
-            await rd.coordinator.async_request_refresh()
-        except ApiAuthError as err:
-            raise ConfigEntryAuthFailed(
-                "Authentication failed when stopping charge. "
-                "Please re-authenticate the Daze integration."
-            ) from err
-        except ApiError as err:
-            raise HomeAssistantError(
-                f"Failed to stop charging: {err}"
-            ) from err
-
-    async def _handle_set_charging_current(call: ServiceCall) -> None:
-        """Set the maximum charging current."""
-        rd = _get_runtime_data(hass)
-        current: int = call.data["current"]
-        try:
-            await rd.api_client.async_set_max_charging_current(
-                rd.serial_number, current
-            )
-            await rd.coordinator.async_request_refresh()
-        except ApiAuthError as err:
-            raise ConfigEntryAuthFailed(
-                "Authentication failed when setting charging current. "
-                "Please re-authenticate the Daze integration."
-            ) from err
-        except ApiError as err:
-            raise HomeAssistantError(
-                f"Failed to set charging current: {err}"
-            ) from err
-
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_START_CHARGE,
-        _handle_start_charge,
-        schema=vol.Schema({}),
-    )
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_STOP_CHARGE,
-        _handle_stop_charge,
-        schema=vol.Schema({}),
-    )
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_SET_CHARGING_CURRENT,
-        _handle_set_charging_current,
-        schema=SET_CHARGING_CURRENT_SCHEMA,
-    )
-
-    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: DazeConfigEntry) -> bool:

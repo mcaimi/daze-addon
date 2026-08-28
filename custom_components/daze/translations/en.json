@@ -55,14 +55,24 @@
       "reauth_successful": "Re-authentication was successful."
     }
   },
-  "reauth": {
-    "title": "Re-authenticate Daze Wallbox",
-    "description": "Your Daze authentication has expired. Please provide your credentials to restore the integration."
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options",
+        "description": "Configure additional options for the Daze Wallbox integration."
+      }
+    }
   },
   "services": {
     "set_charging_current": {
       "name": "Set charging current",
-      "description": "Set the maximum charging current on a Daze wallbox."
+      "description": "Set the maximum charging current on a Daze wallbox.",
+      "fields": {
+        "current": {
+          "name": "Current",
+          "description": "Maximum charging current in milliamps (mA)."
+        }
+      }
     },
     "start_charge": {
       "name": "Start charging",

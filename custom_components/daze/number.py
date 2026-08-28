@@ -9,15 +9,18 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+import voluptuous as vol
 from homeassistant.components.number import NumberEntity
 from homeassistant.const import EntityCategory, UnitOfElectricCurrent
 from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from pydaze import ApiAuthError, ApiError
 
-from .const import DOMAIN
+from .const import DOMAIN, SERVICE_SET_CHARGING_CURRENT
 from .coordinator import DazeDataUpdateCoordinator
 
 if TYPE_CHECKING:
@@ -34,6 +37,15 @@ PARALLEL_UPDATES = 1
 NATIVE_MIN_VALUE = 6000  # 6 A
 NATIVE_MAX_VALUE = 32000  # 32 A
 NATIVE_STEP = 100  # 0.1 A increments
+
+
+def _validate_step(step: int):
+    """Return a voluptuous validator that ensures a value is a multiple of step."""
+    def validator(value):
+        if value % step != 0:
+            raise vol.Invalid(f"must be a multiple of {step}")
+        return value
+    return validator
 
 
 class DazeWallboxNumberEntity(  # type: ignore[reportIncompatibleVariableOverride]
@@ -122,6 +134,10 @@ class DazeWallboxNumberEntity(  # type: ignore[reportIncompatibleVariableOverrid
                 f"Failed to set charging current: {err}"
             ) from err
 
+    async def async_set_charging_current_service(self, **kwargs: Any) -> None:
+        """Handle the set_charging_current entity service call."""
+        await self.async_set_native_value(kwargs["current"])
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -146,4 +162,17 @@ async def async_setup_entry(
                 device_info=device_info,
             )
         ]
+    )
+
+    platform = entity_platform.async_get_current_platform()
+    platform.async_register_entity_service(
+        SERVICE_SET_CHARGING_CURRENT,
+        {
+            vol.Required("current"): vol.All(
+                cv.positive_int,
+                vol.Range(min=NATIVE_MIN_VALUE, max=NATIVE_MAX_VALUE),
+                _validate_step(NATIVE_STEP),
+            ),
+        },
+        "async_set_charging_current_service",
     )

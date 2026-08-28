@@ -13,11 +13,12 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from pydaze import ApiAuthError, ApiError
 
-from .const import DOMAIN
+from .const import DOMAIN, SERVICE_START_CHARGE, SERVICE_STOP_CHARGE
 from .coordinator import DazeDataUpdateCoordinator
 
 if TYPE_CHECKING:
@@ -126,6 +127,14 @@ class DazeWallboxSwitchEntity(  # type: ignore[reportIncompatibleVariableOverrid
                 f"Failed to stop charging: {err}"
             ) from err
 
+    async def async_start_charge_service(self) -> None:
+        """Handle the start_charge entity service call."""
+        await self.async_turn_on()
+
+    async def async_stop_charge_service(self) -> None:
+        """Handle the stop_charge entity service call."""
+        await self.async_turn_off()
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -150,4 +159,12 @@ async def async_setup_entry(
                 device_info=device_info,
             )
         ]
+    )
+
+    platform = entity_platform.async_get_current_platform()
+    platform.async_register_entity_service(
+        SERVICE_START_CHARGE, {}, "async_start_charge_service"
+    )
+    platform.async_register_entity_service(
+        SERVICE_STOP_CHARGE, {}, "async_stop_charge_service"
     )

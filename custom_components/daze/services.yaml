@@ -1,6 +1,8 @@
 set_charging_current:
-  name: "Set charging current"
-  description: "Set the maximum charging current on a Daze wallbox."
+  target:
+    entity:
+      domain: number
+      integration: daze
   fields:
     current:
       required: true
@@ -13,9 +15,13 @@ set_charging_current:
       description: "Maximum charging current in milliamps (mA)."
 
 start_charge:
-  name: "Start charging"
-  description: "Start charging on a Daze wallbox."
+  target:
+    entity:
+      domain: switch
+      integration: daze
 
 stop_charge:
-  name: "Stop charging"
-  description: "Stop charging on a Daze wallbox."
+  target:
+    entity:
+      domain: switch
+      integration: daze
