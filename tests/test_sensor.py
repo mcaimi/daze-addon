@@ -10,10 +10,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from pydaze import SocketRemoteInfo
+
 from custom_components.daze.models import (
     DazeCoordinatorData,
     SessionComputedFields,
-    SocketRemoteInfo,
 )
 
 # ------------------------------------------------------------------

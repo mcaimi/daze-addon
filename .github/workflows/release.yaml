@@ -1,0 +1,69 @@
+name: Build and Release
+
+on:
+  release:
+    types: [created, published]
+
+jobs:
+  release-zip:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.VERSION }}
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Get Version
+        id: get_version
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Patch manifest.json
+        run: |
+          # Validate it looks like a version string
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Warning: Version '${VERSION}' may not follow semver"
+          fi
+
+          # Backup original
+          cp manifest.json manifest.json.backup
+
+          # Apply patch
+          jq --arg version "$VERSION" '.version = $version' manifest.json > manifest.json.new
+          mv manifest.json.new manifest.json
+
+          # Verify JSON is still valid
+          jq empty manifest.json || {
+            echo "ERROR: manifest.json is no longer valid JSON!"
+            cp manifest.json.backup manifest.json
+            exit 1
+          }
+
+          echo "Successfully patched version to ${VERSION}"
+
+      - name: Package Custom Component
+        run: |
+          mkdir -p dist
+          # Get the component name from manifest.json
+          COMPONENT_NAME=$(jq -r '.domain' manifest.json)
+
+          # Zip the component folder
+          zip -r "dist/${COMPONENT_NAME}.zip" "${COMPONENT_NAME}" 
+
+          echo "Package created: dist/${COMPONENT_NAME}.zip" >> $GITHUB_OUTPUT
+
+      - name: Upload Release ZIP
+        uses: softprops/action-gh-release@v1
+        with:
+          files: "*.zip"
+          tag_name: ${{ github.event.release.tag_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}

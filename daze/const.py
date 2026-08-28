@@ -4,18 +4,6 @@ from homeassistant.const import Platform
 
 DOMAIN = "daze"
 
-# API base URLs
-COGNITO_REGION = "eu-central-1"
-API_BASE_URL = "https://webapi.dazeservice.com"
-COGNITO_BASE_URL = f"https://daze.auth.{COGNITO_REGION}.amazoncognito.com"
-
-# Cognito OAuth settings
-CLIENT_ID = "4m0rp7oqarbrc3hn67ivvonba8"
-REDIRECT_URI = "https://webportal.dazeservice.com/authentication/callback"
-
-# Cognito IDP (direct auth) endpoint
-COGNITO_IDP_URL = f"https://cognito-idp.{COGNITO_REGION}.amazonaws.com"
-
 # Config entry keys
 CONF_ACCESS_TOKEN = "access_token"
 CONF_REFRESH_TOKEN = "refresh_token"
@@ -38,7 +26,6 @@ AUTH_METHOD_CREDENTIALS = "credentials"
 
 # Coordinator defaults
 DEFAULT_POLL_INTERVAL = 30  # seconds
-DEFAULT_TOKEN_EXPIRY_BUFFER = 60  # seconds
 
 # Platform list
 PLATFORMS: list[Platform] = [

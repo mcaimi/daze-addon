@@ -10,12 +10,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from custom_components.daze.models import (
-    RechargeSession,
-    SessionComputedFields,
-    _parse_datetime,
-    _safe_float,
-)
+from pydaze import RechargeSession
+from pydaze.models import _parse_datetime, _safe_float
+
+from custom_components.daze.models import SessionComputedFields
 
 
 # ------------------------------------------------------------------
