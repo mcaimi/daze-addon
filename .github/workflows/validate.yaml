@@ -6,7 +6,7 @@ on:
 
 jobs:
   validate:
-    name: python
+    name: Validate Code
     runs-on: ubuntu-latest
 
     steps:
