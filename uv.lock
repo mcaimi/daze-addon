@@ -754,14 +754,14 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pydaze", editable = "../pydaze" }]
+requires-dist = [{ name = "pydaze", specifier = "==0.1.1" }]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "aiohttp", specifier = ">=3.9.3" },
     { name = "homeassistant", specifier = ">=2026.8.3" },
     { name = "homeassistant-stubs", specifier = ">=2026.8.3" },
-    { name = "pydaze", editable = "../pydaze" },
+    { name = "pydaze", specifier = "==0.1.1" },
     { name = "pyright", specifier = ">=1.1.411" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "ruff", specifier = ">=0.16.5" },
@@ -1549,21 +1549,13 @@ wheels = [
 [[package]]
 name = "pydaze"
 version = "0.1.1"
-source = { editable = "../pydaze" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
 ]
-
-[package.metadata]
-requires-dist = [{ name = "aiohttp", specifier = ">=3.9.3" }]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "aioresponses", specifier = ">=0.7.6" },
-    { name = "pyright", specifier = ">=1.1.411" },
-    { name = "pytest", specifier = ">=9.1.1" },
-    { name = "pytest-asyncio", specifier = ">=0.24.0" },
-    { name = "ruff", specifier = ">=0.16.5" },
+sdist = { url = "https://files.pythonhosted.org/packages/54/2f/d3838f4d2a2d064f7dc451fb449a30d996197916c6184d416005489d6c3e/pydaze-0.1.1.tar.gz", hash = "sha256:1ad8c358c394f230887695802c2fe21fd4798879a6276062c5e5a3da14bc1409", size = 39480, upload-time = "2026-08-28T10:17:58.189Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c3/8f/af64d02d09b1d4ba7519f4056ac5662afb9fcd475880fab9050310ab6e01/pydaze-0.1.1-py3-none-any.whl", hash = "sha256:36141770032c821664032e2a63c70fd3c82c5dd596149275b7146d5adaa7eabd", size = 15199, upload-time = "2026-08-28T10:17:56.692Z" },
 ]
 
 [[package]]
