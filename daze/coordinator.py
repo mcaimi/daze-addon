@@ -15,9 +15,14 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 
-from .api import ApiAuthError, ApiError, DazeApiClient
-from .api.auth import DazeAuthClient
-from .api.cognito_auth import DazeCognitoAuthClient
+from pydaze import (
+    ApiAuthError,
+    ApiError,
+    DazeApiClient,
+    DazeAuthClient,
+    DazeCognitoAuthClient,
+    RechargeSession,
+)
 from .const import (
     AUTH_METHOD_CREDENTIALS,
     AUTH_METHOD_TOKEN,
@@ -31,7 +36,6 @@ from .const import (
 )
 from .models import (
     DazeCoordinatorData,
-    RechargeSession,
     SessionComputedFields,
 )
 

@@ -10,7 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers import config_validation as cv, device_registry as dr
 
-from .api import ApiAuthError, ApiError, DazeApiClient
+from pydaze import ApiAuthError, ApiError, DazeApiClient
 from .const import (
     CONF_DEVICE_PROFILE,
     CONF_EVSE_NAME,

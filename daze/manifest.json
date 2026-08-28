@@ -10,6 +10,6 @@
   "documentation": "https://github.com/mcaimi/daze-addon",
   "integration_type": "device",
   "iot_class": "cloud_polling",
-  "requirements": [],
+  "requirements": ["pydaze==0.1.0"],
   "version": "0.3.1"
 }
