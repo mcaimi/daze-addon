@@ -2,5 +2,5 @@
   "name": "Daze Wallbox Integration",
   "homeassistant": "2026.8.3",
   "zip_release": true,
-  "filename": "daze.zip",
+  "filename": "daze.zip"
 }

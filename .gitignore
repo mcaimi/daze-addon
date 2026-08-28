@@ -45,3 +45,4 @@ credentials.*
 
 # api dump
 apidump/**
+specs/**
