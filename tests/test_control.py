@@ -9,10 +9,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from custom_components.daze.models import (
-    DazeCoordinatorData,
-    SocketRemoteInfo,
-)
+from pydaze import SocketRemoteInfo
+
+from custom_components.daze.models import DazeCoordinatorData
 
 # ------------------------------------------------------------------
 # Pure logic extracted from custom_components/daze/switch.py
