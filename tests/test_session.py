@@ -7,14 +7,13 @@ importing the full HA runtime (matching existing test pattern).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from pydaze import RechargeSession
 from pydaze.models import _parse_datetime, _safe_float
 
 from custom_components.daze.models import SessionComputedFields
-
 
 # ------------------------------------------------------------------
 # Sample data
@@ -198,7 +197,7 @@ class TestParseDatetime:
         assert isinstance(result, datetime)
 
     def test_already_datetime(self) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         result = _parse_datetime(now)
         assert result is now
 
@@ -241,7 +240,7 @@ def compute_session_fields(
 
     Mirrors DazeDataUpdateCoordinator._compute_session_fields.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     fields = SessionComputedFields(total_sessions=len(sessions))
 
@@ -262,7 +261,7 @@ def compute_session_fields(
         delta = last.end_time - last.start_time
         fields.last_session_duration = delta.total_seconds() / 60.0
     elif last.start_time:
-        delta = datetime.now(timezone.utc) - last.start_time
+        delta = datetime.now(UTC) - last.start_time
         fields.last_session_duration = delta.total_seconds() / 60.0
 
     lifetime = 0.0
@@ -292,8 +291,8 @@ class TestComputeSessionFields:
         assert fields.total_sessions == 0
 
     def test_single_completed_session(self) -> None:
-        start = datetime(2026, 5, 1, 14, 0, 0, tzinfo=timezone.utc)
-        end = datetime(2026, 5, 1, 16, 30, 0, tzinfo=timezone.utc)
+        start = datetime(2026, 5, 1, 14, 0, 0, tzinfo=UTC)
+        end = datetime(2026, 5, 1, 16, 30, 0, tzinfo=UTC)
         session = RechargeSession(
             session_uid="sess-001",
             start_time=start,
@@ -313,7 +312,7 @@ class TestComputeSessionFields:
 
     def test_in_progress_session(self) -> None:
         """In-progress session: end_time is None, cost is None."""
-        start = datetime(2026, 5, 18, 10, 0, 0, tzinfo=timezone.utc)
+        start = datetime(2026, 5, 18, 10, 0, 0, tzinfo=UTC)
         session = RechargeSession(
             session_uid="sess-002",
             start_time=start,
@@ -332,10 +331,10 @@ class TestComputeSessionFields:
         assert fields.total_sessions == 1
 
     def test_multiple_sessions_aggregation(self) -> None:
-        start1 = datetime(2026, 5, 1, 14, 0, 0, tzinfo=timezone.utc)
-        end1 = datetime(2026, 5, 1, 16, 0, 0, tzinfo=timezone.utc)
-        start2 = datetime(2026, 5, 2, 10, 0, 0, tzinfo=timezone.utc)
-        end2 = datetime(2026, 5, 2, 12, 0, 0, tzinfo=timezone.utc)
+        start1 = datetime(2026, 5, 1, 14, 0, 0, tzinfo=UTC)
+        end1 = datetime(2026, 5, 1, 16, 0, 0, tzinfo=UTC)
+        start2 = datetime(2026, 5, 2, 10, 0, 0, tzinfo=UTC)
+        end2 = datetime(2026, 5, 2, 12, 0, 0, tzinfo=UTC)
 
         sessions = [
             RechargeSession(
@@ -362,8 +361,8 @@ class TestComputeSessionFields:
         sessions = [
             RechargeSession(
                 session_uid="sess-001",
-                start_time=datetime(2026, 5, 1, 14, 0, 0, tzinfo=timezone.utc),
-                end_time=datetime(2026, 5, 1, 16, 0, 0, tzinfo=timezone.utc),
+                start_time=datetime(2026, 5, 1, 14, 0, 0, tzinfo=UTC),
+                end_time=datetime(2026, 5, 1, 16, 0, 0, tzinfo=UTC),
                 energy_wh=None,
                 cost=None,
             ),
@@ -400,8 +399,8 @@ class TestComputeSessionFields:
         sessions = [
             RechargeSession(
                 session_uid=f"sess-{i:03d}",
-                start_time=datetime(2026, 1, 1, tzinfo=timezone.utc),
-                end_time=datetime(2026, 1, 1, 2, 0, 0, tzinfo=timezone.utc),
+                start_time=datetime(2026, 1, 1, tzinfo=UTC),
+                end_time=datetime(2026, 1, 1, 2, 0, 0, tzinfo=UTC),
                 energy_wh=1000.0 * i,
                 cost=float(i),
             )

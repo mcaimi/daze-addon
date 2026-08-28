@@ -16,7 +16,6 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.core import callback
 from homeassistant.const import (
     EntityCategory,
     UnitOfElectricCurrent,
@@ -26,6 +25,7 @@ from homeassistant.const import (
     UnitOfTemperature,
     UnitOfTime,
 )
+from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity

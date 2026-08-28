@@ -14,7 +14,6 @@ from pydaze import SocketRemoteInfo
 
 from custom_components.daze.models import (
     DazeCoordinatorData,
-    SessionComputedFields,
 )
 
 # ------------------------------------------------------------------
@@ -66,7 +65,7 @@ class SensorDef:
     native_unit_of_measurement: str | None = None
     entity_category: str | None = None
     options: list[str] | None = None
-    value_fn: callable = field(default=lambda data: None)  # noqa: E731
+    value_fn: callable = field(default=lambda data: None)
     expected_field: str | None = None
 
 
