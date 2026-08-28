@@ -11,6 +11,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.switch import SwitchEntity
+from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -32,7 +33,7 @@ PARALLEL_UPDATES = 1
 CHARGING_STATE = "charging"
 
 
-class DazeWallboxSwitchEntity(
+class DazeWallboxSwitchEntity(  # type: ignore[reportIncompatibleVariableOverride]
     CoordinatorEntity[DazeDataUpdateCoordinator], SwitchEntity
 ):
     """Switch to start/stop charging on a Daze wallbox."""
@@ -62,15 +63,19 @@ class DazeWallboxSwitchEntity(
         self._attr_unique_id = f"{serial_number}_charge_switch"
         self._attr_device_info = device_info
 
-    @property
-    def is_on(self) -> bool | None:
-        """Return True if the wallbox is currently charging."""
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Update switch state from coordinator data."""
         if self.coordinator.data is None:
-            return None
-        status = self.coordinator.data.socket.evse_status
-        if status is None:
-            return None
-        return str(status).lower() == CHARGING_STATE
+            self._attr_is_on = None
+        else:
+            status = self.coordinator.data.socket.evse_status
+            self._attr_is_on = (
+                str(status).lower() == CHARGING_STATE
+                if status is not None
+                else None
+            )
+        super()._handle_coordinator_update()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Start charging on the wallbox."""

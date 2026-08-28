@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.number import NumberEntity
 from homeassistant.const import EntityCategory, UnitOfElectricCurrent
+from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -35,7 +36,7 @@ NATIVE_MAX_VALUE = 32000  # 32 A
 NATIVE_STEP = 100  # 0.1 A increments
 
 
-class DazeWallboxNumberEntity(
+class DazeWallboxNumberEntity(  # type: ignore[reportIncompatibleVariableOverride]
     CoordinatorEntity[DazeDataUpdateCoordinator], NumberEntity
 ):
     """Number entity to set the max charging current on a Daze wallbox."""
@@ -70,20 +71,19 @@ class DazeWallboxNumberEntity(
         self._attr_unique_id = f"{serial_number}_max_charging_current"
         self._attr_device_info = device_info
 
-    @property
-    def native_value(self) -> int | None:
-        """Return the current max charging current in mA."""
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Update native value from coordinator data."""
         if self.coordinator.data is None:
-            return None
-
-        socket = self.coordinator.data.socket
-        if socket.max_external_charging_current_in_milli_amps is not None:
-            return socket.max_external_charging_current_in_milli_amps
-
-        if socket.last_max_charging_current is not None:
-            return socket.last_max_charging_current
-
-        return None
+            self._attr_native_value = None
+        else:
+            socket = self.coordinator.data.socket
+            self._attr_native_value = (
+                socket.max_external_charging_current_in_milli_amps
+                if socket.max_external_charging_current_in_milli_amps is not None
+                else socket.last_max_charging_current
+            )
+        super()._handle_coordinator_update()
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the max charging current on the wallbox.

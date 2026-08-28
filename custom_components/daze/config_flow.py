@@ -10,10 +10,10 @@ from homeassistant.config_entries import (
     SOURCE_REAUTH,
     ConfigEntry,
     ConfigFlow,
+    ConfigFlowResult,
     OptionsFlow,
 )
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from pydaze import (
     AuthError,
@@ -142,7 +142,7 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle the initial step — auth method selection."""
         return self.async_show_menu(
             step_id="user",
@@ -155,7 +155,7 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_credentials(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle email/password authentication via Cognito IDP."""
         errors: dict[str, str] = {}
 
@@ -208,7 +208,7 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_token(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle access/refresh token authentication."""
         errors: dict[str, str] = {}
 
@@ -263,7 +263,7 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_network(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle the network selection step."""
         errors: dict[str, str] = {}
 
@@ -337,7 +337,7 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_confirm(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle the confirmation step — fetches EVSE info and creates the entry."""
         errors: dict[str, str] = {}
 
@@ -431,7 +431,7 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_reauth(
         self, entry_data: dict[str, Any]
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle re-authentication — routes to the correct auth step."""
         self._auth_method = entry_data.get(
             CONF_AUTH_METHOD, AUTH_METHOD_TOKEN
@@ -455,7 +455,7 @@ class DazeOptionsFlowHandler(OptionsFlow):
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Manage the options."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)

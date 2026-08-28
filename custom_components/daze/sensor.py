@@ -16,6 +16,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
+from homeassistant.core import callback
 from homeassistant.const import (
     EntityCategory,
     UnitOfElectricCurrent,
@@ -353,7 +354,7 @@ last known state would cause visible gaps in history or dashboards.
 # ------------------------------------------------------------------
 
 
-class DazeWallboxSensorEntity(
+class DazeWallboxSensorEntity(  # type: ignore[reportIncompatibleVariableOverride]
     CoordinatorEntity[DazeDataUpdateCoordinator], RestoreEntity, SensorEntity
 ):
     """Base sensor entity for Daze Wallbox metrics.
@@ -365,7 +366,7 @@ class DazeWallboxSensorEntity(
     - State restoration for cumulative sensors via ``RestoreEntity``
     """
 
-    entity_description: DazeSensorEntityDescription
+    entity_description: DazeSensorEntityDescription  # type: ignore[reportIncompatibleVariableOverride]
     _attr_has_entity_name = True
     _restored_value: Any | None = None
 
@@ -384,7 +385,7 @@ class DazeWallboxSensorEntity(
 
         """
         super().__init__(coordinator)
-        self.entity_description = description
+        self.entity_description = description  # type: ignore[reportIncompatibleVariableOverride]
         self._attr_unique_id = f"{coordinator.serial_number}_{description.key}"
         self._attr_device_info = device_info
 
@@ -415,20 +416,23 @@ class DazeWallboxSensorEntity(
         except (ValueError, TypeError):
             self._restored_value = last_state.state
 
-    @property
-    def native_value(self) -> Any | None:
-        """Return the sensor value from the latest coordinator data.
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Update native value from coordinator data.
 
         Falls back to the restored value (from before HA restart) when
         coordinator data is temporarily unavailable, so cumulative
         sensors don't show None during startup delays.
         """
         if self.coordinator.data is not None:
-            return self.entity_description.value_fn(self.coordinator.data)
-        # Fall back to restored state if available
-        if self._restored_value is not None:
-            return self._restored_value
-        return None
+            self._attr_native_value = self.entity_description.value_fn(
+                self.coordinator.data
+            )
+        elif self._restored_value is not None:
+            self._attr_native_value = self._restored_value
+        else:
+            self._attr_native_value = None
+        super()._handle_coordinator_update()
 
 
 # ------------------------------------------------------------------

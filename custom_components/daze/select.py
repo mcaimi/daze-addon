@@ -11,6 +11,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.select import SelectEntity
+from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -78,7 +79,7 @@ _MODE_TO_ECO: dict[str, bool | None] = {
 }
 
 
-class DazeWallboxSelectEntity(
+class DazeWallboxSelectEntity(  # type: ignore[reportIncompatibleVariableOverride]
     CoordinatorEntity[DazeDataUpdateCoordinator], SelectEntity
 ):
     """Select entity to choose the Daze wallbox operation mode."""
@@ -109,12 +110,16 @@ class DazeWallboxSelectEntity(
         self._attr_unique_id = f"{serial_number}_operation_mode"
         self._attr_device_info = device_info
 
-    @property
-    def current_option(self) -> str | None:
-        """Return the current operation mode."""
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Update current option from coordinator data."""
         if self.coordinator.data is None:
-            return None
-        return _current_option_from_data(self.coordinator.data)
+            self._attr_current_option = None
+        else:
+            self._attr_current_option = _current_option_from_data(
+                self.coordinator.data
+            )
+        super()._handle_coordinator_update()
 
     async def async_select_option(self, option: str) -> None:
         """Set the operation mode on the wallbox.
