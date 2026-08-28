@@ -47,9 +47,20 @@ _LOGGER = logging.getLogger(__name__)
 # Service definitions
 # ------------------------------------------------------------------
 
+def _validate_step(step: int):
+    """Return a voluptuous validator that ensures a value is a multiple of step."""
+    def validator(value):
+        if value % step != 0:
+            raise vol.Invalid(f"must be a multiple of {step}")
+        return value
+    return validator
+
+
 SET_CHARGING_CURRENT_SCHEMA = vol.Schema({
     vol.Required("current"): vol.All(
-        cv.positive_int, vol.Range(min=6000, max=32000)
+        cv.positive_int,
+        vol.Range(min=6000, max=32000),
+        _validate_step(100),
     ),
 })
 
