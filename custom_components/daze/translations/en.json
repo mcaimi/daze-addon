@@ -109,16 +109,13 @@
         "name": "EVSE Status"
       },
       "grid_max_power": {
-        "name": "Grid Max Power",
-        "entity_category": "diagnostic"
+        "name": "Grid Max Power"
       },
       "is_photovoltaic": {
-        "name": "Photovoltaic Present",
-        "entity_category": "diagnostic"
+        "name": "Photovoltaic Present"
       },
       "is_three_phase": {
-        "name": "Three-Phase Supply",
-        "entity_category": "diagnostic"
+        "name": "Three-Phase Supply"
       },
       "last_session_energy": {
         "name": "Last Session Energy"
@@ -142,8 +139,7 @@
         "name": "Last Session Charge Time"
       },
       "last_session_currency": {
-        "name": "Last Session Currency",
-        "entity_category": "diagnostic"
+        "name": "Last Session Currency"
       },
       "lifetime_energy": {
         "name": "Lifetime Energy"
@@ -152,8 +148,7 @@
         "name": "Total Sessions"
       },
       "next_scheduled_charge": {
-        "name": "Next Scheduled Charge",
-        "entity_category": "diagnostic"
+        "name": "Next Scheduled Charge"
       }
     },
     "switch": {
@@ -163,8 +158,7 @@
     },
     "number": {
       "max_charging_current": {
-        "name": "Max Charging Current",
-        "entity_category": "config"
+        "name": "Max Charging Current"
       }
     },
     "select": {
