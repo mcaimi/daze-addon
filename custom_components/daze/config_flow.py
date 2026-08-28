@@ -6,21 +6,24 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow, SOURCE_REAUTH
+from homeassistant.config_entries import (
+    SOURCE_REAUTH,
+    ConfigEntry,
+    ConfigFlow,
+    OptionsFlow,
+)
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-
 from pydaze import (
     AuthError,
     CognitoAuthError,
     DazeApiClient,
     DazeAuthClient,
     DazeCognitoAuthClient,
-    Evse,
     Network,
 )
+
 from .const import (
     AUTH_METHOD_CREDENTIALS,
     AUTH_METHOD_TOKEN,

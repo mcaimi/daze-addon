@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -14,7 +14,6 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
     UpdateFailed,
 )
-
 from pydaze import (
     ApiAuthError,
     ApiError,
@@ -23,6 +22,7 @@ from pydaze import (
     DazeCognitoAuthClient,
     RechargeSession,
 )
+
 from .const import (
     AUTH_METHOD_CREDENTIALS,
     AUTH_METHOD_TOKEN,
@@ -42,9 +42,7 @@ from .models import (
 _LOGGER = logging.getLogger(__name__)
 
 
-class DazeDataUpdateCoordinator(
-    DataUpdateCoordinator[DazeCoordinatorData]
-):
+class DazeDataUpdateCoordinator(DataUpdateCoordinator[DazeCoordinatorData]):
     """Coordinator for polling Daze wallbox socket data.
 
     Fetches live metrics from the socket remoteInfo endpoint at a
@@ -155,17 +153,13 @@ class DazeDataUpdateCoordinator(
         except ApiError as err:
             self._last_fail_time = time.time()
             self._consecutive_failures += 1
-            _LOGGER.warning(
-                "API error during coordinator update: %s", err
-            )
+            _LOGGER.warning("API error during coordinator update: %s", err)
             raise UpdateFailed(str(err)) from err
 
         except Exception as err:
             self._last_fail_time = time.time()
             self._consecutive_failures += 1
-            _LOGGER.exception(
-                "Unexpected error during coordinator update"
-            )
+            _LOGGER.exception("Unexpected error during coordinator update")
             raise UpdateFailed(str(err)) from err
 
         # Track success
@@ -219,7 +213,7 @@ class DazeDataUpdateCoordinator(
             delta = last.end_time - last.start_time
             fields.last_session_duration = delta.total_seconds() / 60.0
         elif last.start_time:
-            delta = datetime.now(timezone.utc) - last.start_time
+            delta = datetime.now(UTC) - last.start_time
             fields.last_session_duration = delta.total_seconds() / 60.0
 
         lifetime = 0.0
@@ -244,10 +238,8 @@ class DazeDataUpdateCoordinator(
 
         """
         try:
-            sessions = (
-                await self._api_client.async_get_recharge_sessions(
-                    self._network_uid,
-                )
+            sessions = await self._api_client.async_get_recharge_sessions(
+                self._network_uid,
             )
             _LOGGER.debug(
                 "Fetched %d recharge sessions for network %s",
@@ -276,11 +268,10 @@ class DazeDataUpdateCoordinator(
             )
             return []
 
-        except Exception as err:
+        except Exception:
             _LOGGER.exception(
-                "Unexpected error fetching sessions for %s: %s",
+                "Unexpected error fetching sessions for %s",
                 self._serial_number,
-                err,
             )
             return []
 
@@ -310,9 +301,7 @@ async def async_setup_coordinator(
     session = async_get_clientsession(hass)
     auth_method = entry.data.get(CONF_AUTH_METHOD, AUTH_METHOD_TOKEN)
     if auth_method == AUTH_METHOD_CREDENTIALS:
-        auth_client: DazeAuthClient = DazeCognitoAuthClient(
-            access_token, refresh_token
-        )
+        auth_client: DazeAuthClient = DazeCognitoAuthClient(access_token, refresh_token)
     else:
         auth_client = DazeAuthClient(access_token, refresh_token)
     api_client = DazeApiClient(auth_client, session)

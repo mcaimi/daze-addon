@@ -11,7 +11,6 @@ import time
 from typing import TYPE_CHECKING
 
 from homeassistant.helpers import entity_registry as er
-
 from pydaze import COGNITO_BASE_URL
 
 from .const import AUTH_METHOD_TOKEN, CONF_AUTH_METHOD
@@ -87,7 +86,7 @@ async def async_get_config_entry_diagnostics(
 
 def _async_get_entity_inventory(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: DazeConfigEntry,
 ) -> dict[str, int]:
     """Count entities by platform for a config entry.
 

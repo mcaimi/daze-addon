@@ -14,8 +14,8 @@ from homeassistant.const import EntityCategory, UnitOfElectricCurrent
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-
 from pydaze import ApiAuthError, ApiError
+
 from .const import DOMAIN
 from .coordinator import DazeDataUpdateCoordinator
 

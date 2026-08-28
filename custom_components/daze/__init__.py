@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+
 import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
-from homeassistant.helpers import config_validation as cv, device_registry as dr
-
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr
 from pydaze import ApiAuthError, ApiError, DazeApiClient
+
 from .const import (
     CONF_DEVICE_PROFILE,
     CONF_EVSE_NAME,
@@ -25,8 +27,6 @@ from .const import (
     SERVICE_STOP_CHARGE,
 )
 from .coordinator import DazeDataUpdateCoordinator, async_setup_coordinator
-
-from homeassistant.core import HomeAssistant, ServiceCall
 
 
 @dataclass
