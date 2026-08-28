@@ -9,21 +9,29 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+import voluptuous as vol
 from homeassistant.components.number import NumberEntity
 from homeassistant.const import EntityCategory, UnitOfElectricCurrent
+from homeassistant.core import callback
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from pydaze import ApiAuthError, ApiError
 
-from .api import ApiAuthError, ApiError
-from .const import DOMAIN
+from .const import DOMAIN, SERVICE_SET_CHARGING_CURRENT
 from .coordinator import DazeDataUpdateCoordinator
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
-    from homeassistant.helpers.entity_platform import AddEntitiesCallback
+    from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+
+from . import DazeConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
+
+PARALLEL_UPDATES = 1
 
 # Industry-standard range for EVSE charging current limits
 NATIVE_MIN_VALUE = 6000  # 6 A
@@ -31,12 +39,22 @@ NATIVE_MAX_VALUE = 32000  # 32 A
 NATIVE_STEP = 100  # 0.1 A increments
 
 
-class DazeWallboxNumberEntity(
+def _validate_step(step: int):
+    """Return a voluptuous validator that ensures a value is a multiple of step."""
+    def validator(value):
+        if value % step != 0:
+            raise vol.Invalid(f"must be a multiple of {step}")
+        return value
+    return validator
+
+
+class DazeWallboxNumberEntity(  # type: ignore[reportIncompatibleVariableOverride]
     CoordinatorEntity[DazeDataUpdateCoordinator], NumberEntity
 ):
     """Number entity to set the max charging current on a Daze wallbox."""
 
     _attr_has_entity_name = True
+    _attr_translation_key = "max_charging_current"
     _attr_entity_category = EntityCategory.CONFIG
     _attr_native_min_value = NATIVE_MIN_VALUE
     _attr_native_max_value = NATIVE_MAX_VALUE
@@ -65,24 +83,19 @@ class DazeWallboxNumberEntity(
         self._attr_unique_id = f"{serial_number}_max_charging_current"
         self._attr_device_info = device_info
 
-    @property
-    def native_value(self) -> int | None:
-        """Return the current max charging current in mA."""
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Update native value from coordinator data."""
         if self.coordinator.data is None:
-            return None
-
-        # Primary field, then fallback
-        value = self.coordinator.data.get(
-            "maxExternalChargingCurrentInMilliAmps"
-        )
-        if value is not None:
-            return int(value)
-
-        value = self.coordinator.data.get("lastMaxChargingCurrent")
-        if value is not None:
-            return int(value)
-
-        return None
+            self._attr_native_value = None
+        else:
+            socket = self.coordinator.data.socket
+            self._attr_native_value = (
+                socket.max_external_charging_current_in_milli_amps
+                if socket.max_external_charging_current_in_milli_amps is not None
+                else socket.last_max_charging_current
+            )
+        super()._handle_coordinator_update()
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the max charging current on the wallbox.
@@ -112,50 +125,29 @@ class DazeWallboxNumberEntity(
             )
             await self.coordinator.async_request_refresh()
         except ApiAuthError as err:
-            _LOGGER.warning(
-                "Auth error setting max current on %s: %s",
-                self._serial_number,
-                err,
-            )
-            self._notify_error(
-                "Authentication failed when trying to set the charging "
-                "current. Please re-authenticate the integration."
-            )
+            raise ConfigEntryAuthFailed(
+                "Authentication failed when setting charging current. "
+                "Please re-authenticate the Daze integration."
+            ) from err
         except ApiError as err:
-            _LOGGER.warning(
-                "API error setting max current on %s: %s",
-                self._serial_number,
-                err,
-            )
-            self._notify_error(
-                "Failed to set the maximum charging current. "
-                f"Error: {err}"
-            )
+            raise HomeAssistantError(
+                f"Failed to set charging current: {err}"
+            ) from err
 
-    def _notify_error(self, message: str) -> None:
-        """Show a persistent notification in the HA frontend."""
-        self.hass.components.persistent_notification.async_create(
-            hass=self.hass,
-            message=message,
-            title="Daze Wallbox — Charging Current Error",
-            notification_id=f"daze_number_error_{self._serial_number}",
-        )
+    async def async_set_charging_current_service(self, **kwargs: Any) -> None:
+        """Handle the set_charging_current entity service call."""
+        await self.async_set_native_value(kwargs["current"])
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    entry: DazeConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up Daze Wallbox number entity.
-
-    Reads the coordinator, API client, serial number, and device info
-    from ``hass.data`` and registers the number entity.
-    """
-    entry_data = hass.data[DOMAIN][entry.entry_id]
-    coordinator: DazeDataUpdateCoordinator = entry_data["coordinator"]
-    api_client = entry_data["api_client"]
-    serial_number: str = entry_data["serial_number"]
+    """Set up Daze Wallbox number entity."""
+    coordinator = entry.runtime_data.coordinator
+    api_client = entry.runtime_data.api_client
+    serial_number = entry.runtime_data.serial_number
 
     device_info = DeviceInfo(
         identifiers={(DOMAIN, serial_number)},
@@ -170,4 +162,17 @@ async def async_setup_entry(
                 device_info=device_info,
             )
         ]
+    )
+
+    platform = entity_platform.async_get_current_platform()
+    platform.async_register_entity_service(
+        SERVICE_SET_CHARGING_CURRENT,
+        {
+            vol.Required("current"): vol.All(
+                cv.positive_int,
+                vol.Range(min=NATIVE_MIN_VALUE, max=NATIVE_MAX_VALUE),
+                _validate_step(NATIVE_STEP),
+            ),
+        },
+        "async_set_charging_current_service",
     )

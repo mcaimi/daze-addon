@@ -11,19 +11,19 @@ import time
 from typing import TYPE_CHECKING
 
 from homeassistant.helpers import entity_registry as er
+from pydaze import COGNITO_BASE_URL
 
-from .const import COGNITO_BASE_URL, DOMAIN
+from .const import AUTH_METHOD_TOKEN, CONF_AUTH_METHOD
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
-    from .coordinator import DazeDataUpdateCoordinator
+from . import DazeConfigEntry
 
 
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: DazeConfigEntry,
 ) -> dict:
     """Return diagnostics for a Daze Wallbox config entry.
 
@@ -41,8 +41,7 @@ async def async_get_config_entry_diagnostics(
         A JSON-serialisable dict.
 
     """
-    entry_data = hass.data[DOMAIN][entry.entry_id]
-    coordinator: DazeDataUpdateCoordinator = entry_data["coordinator"]
+    coordinator = entry.runtime_data.coordinator
     api_client = coordinator.api_client
     auth_client = api_client.auth_client
 
@@ -51,6 +50,7 @@ async def async_get_config_entry_diagnostics(
     return {
         "auth": {
             "issuer": COGNITO_BASE_URL,
+            "auth_method": entry.data.get(CONF_AUTH_METHOD, AUTH_METHOD_TOKEN),
             "token_expired": auth_client.is_token_expired(),
             "token_expiry_timestamp": auth_client.token_expiry,
             "token_age_seconds": (
@@ -86,7 +86,7 @@ async def async_get_config_entry_diagnostics(
 
 def _async_get_entity_inventory(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: DazeConfigEntry,
 ) -> dict[str, int]:
     """Count entities by platform for a config entry.
 

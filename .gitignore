@@ -4,6 +4,7 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+.venv/
 
 # IDE
 .vscode/
@@ -41,3 +42,7 @@ credentials.*
 *.cert
 *.p12
 *.pfx
+
+# api dump
+apidump/**
+specs/**

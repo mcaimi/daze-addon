@@ -1,13 +1,17 @@
 {
   "domain": "daze",
   "name": "Daze Wallbox Integration",
-  "codeowners": ["@arest"],
+  "codeowners": [
+    "@mcaimi"
+  ],
   "config_flow": true,
   "dependencies": [],
-  "issue_tracker": "https://github.com/arest/daze-addon/issues",
-  "documentation": "https://github.com/arest/daze-addon",
+  "documentation": "https://github.com/mcaimi/daze-addon",
   "integration_type": "device",
   "iot_class": "cloud_polling",
-  "requirements": [],
-  "version": "0.1.0"
+  "issue_tracker": "https://github.com/mcaimi/daze-addon/issues",
+  "requirements": [
+    "pydaze==0.1.1"
+  ],
+  "version": "0.4.0"
 }

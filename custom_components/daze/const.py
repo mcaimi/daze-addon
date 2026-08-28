@@ -1,14 +1,8 @@
 """Constants for the Daze Wallbox integration."""
 
+from homeassistant.const import Platform
+
 DOMAIN = "daze"
-
-# API base URLs
-API_BASE_URL = "https://webapi.dazeservice.com/v3"
-COGNITO_BASE_URL = "https://daze.auth.eu-central-1.amazoncognito.com"
-
-# Cognito OAuth settings
-CLIENT_ID = "4m0rp7oqarbrc3hn67ivvonba8"
-REDIRECT_URI = "https://webportal.dazeservice.com/authentication/callback"
 
 # Config entry keys
 CONF_ACCESS_TOKEN = "access_token"
@@ -23,13 +17,23 @@ CONF_DEVICE_PROFILE = "device_profile"
 CONF_FIRMWARE_VERSION = "firmware_version"
 CONF_SOFTWARE_VERSION = "software_version"
 CONF_POLL_INTERVAL = "poll_interval"
+CONF_AUTH_METHOD = "auth_method"
+CONF_PASSWORD = "password"
+
+# Auth method constants
+AUTH_METHOD_TOKEN = "token"
+AUTH_METHOD_CREDENTIALS = "credentials"
 
 # Coordinator defaults
 DEFAULT_POLL_INTERVAL = 30  # seconds
-DEFAULT_TOKEN_EXPIRY_BUFFER = 60  # seconds
 
 # Platform list
-PLATFORMS = ["sensor", "switch", "number", "select"]
+PLATFORMS: list[Platform] = [
+    Platform.SENSOR,
+    Platform.SWITCH,
+    Platform.NUMBER,
+    Platform.SELECT,
+]
 
 # Service names
 SERVICE_START_CHARGE = "start_charge"

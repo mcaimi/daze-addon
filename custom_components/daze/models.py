@@ -4,82 +4,33 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
 
-# ------------------------------------------------------------------
-# Recharge session model
-# ------------------------------------------------------------------
+from pydaze import RechargeSession, SocketRemoteInfo
 
 
 @dataclass
-class RechargeSession:
-    """A single recharge session from the Daze API.
+class SessionComputedFields:
+    """Derived session sensor values computed by the coordinator."""
 
-    All fields are optional since the API response structure may vary
-    (e.g., in-progress sessions lack end_time and cost).
-    """
-
-    session_uid: str
-    start_time: datetime | None = None
-    end_time: datetime | None = None
-    energy_wh: float | None = None
-    cost: float | None = None
-    currency: str | None = None
-    status: str | None = None
-    evse_serial: str | None = None
-    raw: dict[str, Any] = field(default_factory=dict)
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> RechargeSession:
-        """Create a RechargeSession from the raw API response dict.
-
-        Handles missing and None fields gracefully so partial sessions
-        (in-progress) and unexpected API shapes don't crash.
-        """
-        return cls(
-            session_uid=str(data.get("sessionUid", "")),
-            start_time=_parse_datetime(data.get("startDate")),
-            end_time=_parse_datetime(data.get("endDate")),
-            energy_wh=_safe_float(data.get("energyInWh")),
-            cost=_safe_float(data.get("totalCost")),
-            currency=data.get("currency"),
-            status=data.get("status"),
-            evse_serial=data.get("evseSerialNumber"),
-            raw=data,
-        )
-
-    @property
-    def is_in_progress(self) -> bool:
-        """Return True if this session has not ended."""
-        return self.end_time is None and self.status != "completed"
+    last_session_energy: float | None = None
+    last_session_duration: float | None = None
+    last_session_cost: float | None = None
+    last_session_start: datetime | None = None
+    last_session_end: datetime | None = None
+    last_session_average_power: float | None = None
+    last_session_charge_time: str | None = None
+    last_session_currency: str | None = None
+    last_session_currency_symbol: str | None = None
+    lifetime_energy: float = 0.0
+    total_sessions: int = 0
 
 
-def _parse_datetime(value: Any) -> datetime | None:
-    """Try to parse a datetime string from the API.
+@dataclass
+class DazeCoordinatorData:
+    """Typed coordinator data combining socket info and session data."""
 
-    The Daze API may return ISO 8601 strings, timestamps, or None.
-    """
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, (int, float)):
-        return datetime.fromtimestamp(value)
-
-    # Try ISO 8601 string parsing
-    try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except (ValueError, TypeError):
-        pass
-
-    return None
-
-
-def _safe_float(value: Any) -> float | None:
-    """Safely convert a value to float, returning None on failure."""
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (ValueError, TypeError):
-        return None
+    socket: SocketRemoteInfo
+    sessions: list[RechargeSession] = field(default_factory=list)
+    session_fields: SessionComputedFields = field(
+        default_factory=SessionComputedFields
+    )

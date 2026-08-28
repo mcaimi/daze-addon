@@ -3,6 +3,22 @@
     "title": "Daze Wallbox",
     "step": {
       "user": {
+        "title": "Metodo di autenticazione",
+        "description": "Scegli come autenticarti con il tuo account Daze.",
+        "menu_options": {
+          "credentials": "Email e Password",
+          "token": "Token di accesso e di aggiornamento (Avanzato)"
+        }
+      },
+      "credentials": {
+        "title": "Accesso account Daze",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        },
+        "description": "Inserisci email e password del tuo account Daze."
+      },
+      "token": {
         "data": {
           "access_token": "Token di accesso",
           "refresh_token": "Token di aggiornamento"
@@ -17,11 +33,18 @@
       },
       "confirm": {
         "title": "Conferma",
-        "description": "Rete: **{network_name}**\nCaricatore: **{evse_name}** ({serial_number})\nModello: **{device_profile}**\n\nPremi Invia per completare la configurazione."
+        "description": "Rete: **{network_name}**\nCaricatore: **{evse_name}** ({serial_number})\nModello: **{device_profile}**\n\nPremi Invia per completare la configurazione.",
+        "data": {
+          "evse_name": "Nome dispositivo"
+        }
       }
     },
     "error": {
       "invalid_token": "I token forniti non sono validi o sono scaduti. Controlla e riprova.",
+      "invalid_credentials": "Email o password errati. Controlla e riprova.",
+      "user_not_confirmed": "Questo indirizzo email non è stato confermato. Controlla la tua email per un link di conferma da Daze.",
+      "password_reset_required": "È necessario reimpostare la password. Reimposta la password tramite l'app o il portale web Daze.",
+      "too_many_requests": "Troppi tentativi di autenticazione. Attendi qualche minuto e riprova.",
       "network_error": "Impossibile connettersi all'API Daze. Verifica la connessione internet e riprova.",
       "no_networks": "Nessuna rete trovata per questo account.",
       "no_evses": "Nessuna wallbox trovata nella rete selezionata.",
@@ -34,7 +57,7 @@
   },
   "reauth": {
     "title": "Re-autentica Daze Wallbox",
-    "description": "I token Daze sono scaduti. Inserisci un nuovo token di accesso e un nuovo token di aggiornamento per ripristinare l'integrazione."
+    "description": "L'autenticazione Daze è scaduta. Inserisci le tue credenziali per ripristinare l'integrazione."
   },
   "services": {
     "set_charging_current": {

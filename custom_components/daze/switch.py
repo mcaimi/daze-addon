@@ -11,29 +11,36 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.switch import SwitchEntity
+from homeassistant.core import callback
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from pydaze import ApiAuthError, ApiError
 
-from .api import ApiAuthError, ApiError
-from .const import DOMAIN
+from .const import DOMAIN, SERVICE_START_CHARGE, SERVICE_STOP_CHARGE
 from .coordinator import DazeDataUpdateCoordinator
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
-    from homeassistant.helpers.entity_platform import AddEntitiesCallback
+    from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+
+from . import DazeConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
+
+PARALLEL_UPDATES = 1
 
 CHARGING_STATE = "charging"
 
 
-class DazeWallboxSwitchEntity(
+class DazeWallboxSwitchEntity(  # type: ignore[reportIncompatibleVariableOverride]
     CoordinatorEntity[DazeDataUpdateCoordinator], SwitchEntity
 ):
     """Switch to start/stop charging on a Daze wallbox."""
 
     _attr_has_entity_name = True
+    _attr_translation_key = "charge_control"
 
     def __init__(
         self,
@@ -57,15 +64,19 @@ class DazeWallboxSwitchEntity(
         self._attr_unique_id = f"{serial_number}_charge_switch"
         self._attr_device_info = device_info
 
-    @property
-    def is_on(self) -> bool | None:
-        """Return True if the wallbox is currently charging."""
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Update switch state from coordinator data."""
         if self.coordinator.data is None:
-            return None
-        status = self.coordinator.data.get("evseStatus")
-        if status is None:
-            return None
-        return str(status).lower() == CHARGING_STATE
+            self._attr_is_on = None
+        else:
+            status = self.coordinator.data.socket.evse_status
+            self._attr_is_on = (
+                str(status).lower() == CHARGING_STATE
+                if status is not None
+                else None
+            )
+        super()._handle_coordinator_update()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Start charging on the wallbox."""
@@ -83,30 +94,17 @@ class DazeWallboxSwitchEntity(
             await self._api_client.async_start_charge(self._serial_number)
             await self.coordinator.async_request_refresh()
         except ApiAuthError as err:
-            _LOGGER.warning(
-                "Auth error starting charge on %s: %s",
-                self._serial_number,
-                err,
-            )
-            self._notify_error(
-                "Authentication failed when trying to start charging. "
-                "Please re-authenticate the integration."
-            )
+            raise ConfigEntryAuthFailed(
+                "Authentication failed when starting charge. "
+                "Please re-authenticate the Daze integration."
+            ) from err
         except ApiError as err:
-            _LOGGER.warning(
-                "API error starting charge on %s: %s",
-                self._serial_number,
-                err,
-            )
-            self._notify_error(
-                "Failed to start charging. "
-                "Check that the car is connected and try again. "
-                f"Error: {err}"
-            )
+            raise HomeAssistantError(
+                f"Failed to start charging: {err}"
+            ) from err
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Stop charging on the wallbox."""
-        # Already stopped — idempotent no-op
         if self.is_on is False or self.is_on is None:
             _LOGGER.debug(
                 "Switch turn_off called but not charging — skipping"
@@ -120,50 +118,33 @@ class DazeWallboxSwitchEntity(
             await self._api_client.async_stop_charge(self._serial_number)
             await self.coordinator.async_request_refresh()
         except ApiAuthError as err:
-            _LOGGER.warning(
-                "Auth error stopping charge on %s: %s",
-                self._serial_number,
-                err,
-            )
-            self._notify_error(
-                "Authentication failed when trying to stop charging. "
-                "Please re-authenticate the integration."
-            )
+            raise ConfigEntryAuthFailed(
+                "Authentication failed when stopping charge. "
+                "Please re-authenticate the Daze integration."
+            ) from err
         except ApiError as err:
-            _LOGGER.warning(
-                "API error stopping charge on %s: %s",
-                self._serial_number,
-                err,
-            )
-            self._notify_error(
-                "Failed to stop charging. "
-                f"Error: {err}"
-            )
+            raise HomeAssistantError(
+                f"Failed to stop charging: {err}"
+            ) from err
 
-    def _notify_error(self, message: str) -> None:
-        """Show a persistent notification in the HA frontend."""
-        self.hass.components.persistent_notification.async_create(
-            hass=self.hass,
-            message=message,
-            title="Daze Wallbox — Charge Control Error",
-            notification_id=f"daze_switch_error_{self._serial_number}",
-        )
+    async def async_start_charge_service(self) -> None:
+        """Handle the start_charge entity service call."""
+        await self.async_turn_on()
+
+    async def async_stop_charge_service(self) -> None:
+        """Handle the stop_charge entity service call."""
+        await self.async_turn_off()
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    entry: DazeConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up Daze Wallbox switch entity.
-
-    Reads the coordinator, API client, serial number, and device info
-    from ``hass.data`` and registers the switch.
-    """
-    entry_data = hass.data[DOMAIN][entry.entry_id]
-    coordinator: DazeDataUpdateCoordinator = entry_data["coordinator"]
-    api_client = entry_data["api_client"]
-    serial_number: str = entry_data["serial_number"]
+    """Set up Daze Wallbox switch entity."""
+    coordinator = entry.runtime_data.coordinator
+    api_client = entry.runtime_data.api_client
+    serial_number = entry.runtime_data.serial_number
 
     device_info = DeviceInfo(
         identifiers={(DOMAIN, serial_number)},
@@ -178,4 +159,12 @@ async def async_setup_entry(
                 device_info=device_info,
             )
         ]
+    )
+
+    platform = entity_platform.async_get_current_platform()
+    platform.async_register_entity_service(
+        SERVICE_START_CHARGE, {}, "async_start_charge_service"
+    )
+    platform.async_register_entity_service(
+        SERVICE_STOP_CHARGE, {}, "async_stop_charge_service"
     )

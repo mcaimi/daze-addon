@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import UTC, datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -15,27 +14,35 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
     UpdateFailed,
 )
+from pydaze import (
+    ApiAuthError,
+    ApiError,
+    DazeApiClient,
+    DazeAuthClient,
+    DazeCognitoAuthClient,
+    RechargeSession,
+)
 
-from .api import ApiAuthError, ApiError, DazeApiClient
-from .api.auth import DazeAuthClient
 from .const import (
+    AUTH_METHOD_CREDENTIALS,
+    AUTH_METHOD_TOKEN,
     CONF_ACCESS_TOKEN,
+    CONF_AUTH_METHOD,
     CONF_NETWORK_UID,
     CONF_REFRESH_TOKEN,
     CONF_SERIAL_NUMBER,
     DEFAULT_POLL_INTERVAL,
     DOMAIN,
 )
-from .models import RechargeSession
+from .models import (
+    DazeCoordinatorData,
+    SessionComputedFields,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
-type DazeCoordinatorData = dict[str, Any]
 
-
-class DazeDataUpdateCoordinator(
-    DataUpdateCoordinator[DazeCoordinatorData]
-):
+class DazeDataUpdateCoordinator(DataUpdateCoordinator[DazeCoordinatorData]):
     """Coordinator for polling Daze wallbox socket data.
 
     Fetches live metrics from the socket remoteInfo endpoint at a
@@ -46,21 +53,13 @@ class DazeDataUpdateCoordinator(
     def __init__(
         self,
         hass: HomeAssistant,
+        entry: ConfigEntry,
         api_client: DazeApiClient,
         serial_number: str,
         network_uid: str,
         poll_interval: int = DEFAULT_POLL_INTERVAL,
     ) -> None:
-        """Initialise the coordinator.
-
-        Args:
-            hass: The HomeAssistant instance.
-            api_client: An authenticated DazeApiClient.
-            serial_number: The wallbox serial number.
-            network_uid: The network UID for the wallbox.
-            poll_interval: Polling interval in seconds (default 30).
-
-        """
+        """Initialise the coordinator."""
         self._api_client = api_client
         self._serial_number = serial_number
         self._network_uid = network_uid
@@ -72,6 +71,7 @@ class DazeDataUpdateCoordinator(
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=entry,
             name=f"{DOMAIN}-{serial_number}",
             update_interval=timedelta(seconds=poll_interval),
         )
@@ -132,7 +132,7 @@ class DazeDataUpdateCoordinator(
         self._total_updates += 1
 
         try:
-            data = await self._api_client.async_get_socket_remote_info(
+            socket_info = await self._api_client.async_get_socket_remote_info(
                 self._serial_number
             )
             _LOGGER.debug(
@@ -153,17 +153,13 @@ class DazeDataUpdateCoordinator(
         except ApiError as err:
             self._last_fail_time = time.time()
             self._consecutive_failures += 1
-            _LOGGER.warning(
-                "API error during coordinator update: %s", err
-            )
+            _LOGGER.warning("API error during coordinator update: %s", err)
             raise UpdateFailed(str(err)) from err
 
         except Exception as err:
             self._last_fail_time = time.time()
             self._consecutive_failures += 1
-            _LOGGER.exception(
-                "Unexpected error during coordinator update"
-            )
+            _LOGGER.exception("Unexpected error during coordinator update")
             raise UpdateFailed(str(err)) from err
 
         # Track success
@@ -172,8 +168,6 @@ class DazeDataUpdateCoordinator(
 
         # Fetch session data (secondary — failures are non-fatal)
         sessions = await self._async_fetch_sessions()
-        data["sessions"] = sessions
-        data.update(self._compute_session_fields(sessions))
 
         _LOGGER.debug(
             "Coordinator data for %s: %d sessions loaded",
@@ -181,54 +175,52 @@ class DazeDataUpdateCoordinator(
             len(sessions),
         )
 
-        return data
+        return DazeCoordinatorData(
+            socket=socket_info,
+            sessions=sessions,
+            session_fields=self._compute_session_fields(sessions),
+        )
 
     @staticmethod
     def _compute_session_fields(
         sessions: list[RechargeSession],
-    ) -> dict[str, Any]:
+    ) -> SessionComputedFields:
         """Compute derived session sensor values from session list.
 
         Sessions are expected newest-first. "Last session" is the
         first entry (index 0).
 
         Returns:
-            A dict of computed fields to merge into coordinator data.
+            A SessionComputedFields instance.
 
         """
-        fields: dict[str, Any] = {
-            "last_session_energy": None,
-            "last_session_duration": None,
-            "last_session_cost": None,
-            "last_session_start": None,
-            "last_session_end": None,
-            "lifetime_energy": 0.0,
-            "total_sessions": len(sessions),
-        }
+        fields = SessionComputedFields(total_sessions=len(sessions))
 
         if not sessions:
             return fields
 
         last = sessions[0]
-        fields["last_session_energy"] = last.energy_wh
-        fields["last_session_cost"] = last.cost
-        fields["last_session_start"] = last.start_time
-        fields["last_session_end"] = last.end_time
+        fields.last_session_energy = last.energy_wh
+        fields.last_session_cost = last.cost
+        fields.last_session_start = last.start_time
+        fields.last_session_end = last.end_time
+        fields.last_session_average_power = last.average_power
+        fields.last_session_charge_time = last.charge_time
+        fields.last_session_currency = last.currency
+        fields.last_session_currency_symbol = last.currency_symbol
 
         if last.start_time and last.end_time:
             delta = last.end_time - last.start_time
-            fields["last_session_duration"] = delta.total_seconds() / 60.0
+            fields.last_session_duration = delta.total_seconds() / 60.0
         elif last.start_time:
-            # In-progress session — duration since start
-            delta = datetime.now(timezone.utc) - last.start_time
-            fields["last_session_duration"] = delta.total_seconds() / 60.0
+            delta = datetime.now(UTC) - last.start_time
+            fields.last_session_duration = delta.total_seconds() / 60.0
 
-        # Compute lifetime energy from all sessions
         lifetime = 0.0
         for ses in sessions:
             if ses.energy_wh is not None:
                 lifetime += ses.energy_wh
-        fields["lifetime_energy"] = lifetime
+        fields.lifetime_energy = lifetime
 
         return fields
 
@@ -246,19 +238,15 @@ class DazeDataUpdateCoordinator(
 
         """
         try:
-            sessions_raw = (
-                await self._api_client.async_get_recharge_sessions(
-                    self._network_uid,
-                )
+            sessions = await self._api_client.async_get_recharge_sessions(
+                self._network_uid,
             )
             _LOGGER.debug(
                 "Fetched %d recharge sessions for network %s",
-                len(sessions_raw),
+                len(sessions),
                 self._network_uid,
             )
-            return [
-                RechargeSession.from_dict(s) for s in sessions_raw
-            ]
+            return sessions
 
         except ApiAuthError:
             # Auth errors on session endpoint are unexpected (the
@@ -280,11 +268,10 @@ class DazeDataUpdateCoordinator(
             )
             return []
 
-        except Exception as err:
+        except Exception:
             _LOGGER.exception(
-                "Unexpected error fetching sessions for %s: %s",
+                "Unexpected error fetching sessions for %s",
                 self._serial_number,
-                err,
             )
             return []
 
@@ -312,11 +299,16 @@ async def async_setup_coordinator(
     network_uid = entry.data[CONF_NETWORK_UID]
 
     session = async_get_clientsession(hass)
-    auth_client = DazeAuthClient(access_token, refresh_token)
+    auth_method = entry.data.get(CONF_AUTH_METHOD, AUTH_METHOD_TOKEN)
+    if auth_method == AUTH_METHOD_CREDENTIALS:
+        auth_client: DazeAuthClient = DazeCognitoAuthClient(access_token, refresh_token)
+    else:
+        auth_client = DazeAuthClient(access_token, refresh_token)
     api_client = DazeApiClient(auth_client, session)
 
     coordinator = DazeDataUpdateCoordinator(
         hass=hass,
+        entry=entry,
         api_client=api_client,
         serial_number=serial_number,
         network_uid=network_uid,

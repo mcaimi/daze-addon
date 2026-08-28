@@ -6,22 +6,36 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
+from homeassistant.config_entries import (
+    SOURCE_REAUTH,
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from pydaze import (
+    AuthError,
+    CognitoAuthError,
+    DazeApiClient,
+    DazeAuthClient,
+    DazeCognitoAuthClient,
+    Network,
+)
 
-from .api import DazeApiClient
-from .api.auth import AuthError, DazeAuthClient
 from .const import (
+    AUTH_METHOD_CREDENTIALS,
+    AUTH_METHOD_TOKEN,
     CONF_ACCESS_TOKEN,
+    CONF_AUTH_METHOD,
     CONF_DEVICE_PROFILE,
     CONF_EMAIL,
     CONF_EVSE_NAME,
     CONF_FIRMWARE_VERSION,
     CONF_NETWORK_NAME,
     CONF_NETWORK_UID,
+    CONF_PASSWORD,
     CONF_REFRESH_TOKEN,
     CONF_SERIAL_NUMBER,
     CONF_SOFTWARE_VERSION,
@@ -30,12 +44,31 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-STEP_USER_DATA_SCHEMA = vol.Schema(
+STEP_TOKEN_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_ACCESS_TOKEN): str,
         vol.Required(CONF_REFRESH_TOKEN): str,
     }
 )
+
+STEP_CREDENTIALS_DATA_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_EMAIL): str,
+        vol.Required(CONF_PASSWORD): str,
+    }
+)
+
+
+def _map_cognito_error(error_type: str | None) -> str:
+    """Map a Cognito IDP error type to a config flow error key."""
+    mapping = {
+        "NotAuthorizedException": "invalid_credentials",
+        "UserNotFoundException": "invalid_credentials",
+        "UserNotConfirmedException": "user_not_confirmed",
+        "PasswordResetRequiredException": "password_reset_required",
+        "TooManyRequestsException": "too_many_requests",
+    }
+    return mapping.get(error_type or "", "unknown")
 
 
 async def _validate_tokens(
@@ -73,7 +106,7 @@ async def _fetch_networks(
     hass: HomeAssistant,
     api_client: DazeApiClient,
     email: str,
-) -> list[dict[str, Any]]:
+) -> list[Network]:
     """Fetch available networks for the user."""
     try:
         return await api_client.async_get_networks(email)
@@ -89,11 +122,12 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         """Initialise the config flow."""
-        self._reauth_entry: ConfigEntry | None = None
+        self._auth_method: str | None = None
         self._access_token: str | None = None
         self._refresh_token: str | None = None
         self._email: str | None = None
-        self._networks: list[dict[str, Any]] = []
+        self._password: str | None = None
+        self._networks: list[Network] = []
         self._network_uid: str | None = None
         self._network_name: str | None = None
         self._evse_name: str | None = None
@@ -103,16 +137,79 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
         self._software_version: str | None = None
 
     # ------------------------------------------------------------------
-    # Step 1: Token entry
+    # Step 1: Auth method selection
     # ------------------------------------------------------------------
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle the initial step — token entry.
+    ) -> ConfigFlowResult:
+        """Handle the initial step — auth method selection."""
+        return self.async_show_menu(
+            step_id="user",
+            menu_options=["credentials", "token"],
+        )
 
-        The user provides their Daze access token and refresh token.
-        """
+    # ------------------------------------------------------------------
+    # Step 1a: Email/password authentication
+    # ------------------------------------------------------------------
+
+    async def async_step_credentials(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle email/password authentication via Cognito IDP."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            email = user_input[CONF_EMAIL]
+            password = user_input[CONF_PASSWORD]
+
+            try:
+                session = async_get_clientsession(self.hass)
+                auth_client = await DazeCognitoAuthClient.async_authenticate(
+                    session, email, password
+                )
+            except CognitoAuthError as err:
+                errors["base"] = _map_cognito_error(err.error_type)
+            except Exception:
+                _LOGGER.exception("Unexpected error during credential auth")
+                errors["base"] = "network_error"
+            else:
+                tokens = auth_client.get_tokens_for_store()
+                self._auth_method = AUTH_METHOD_CREDENTIALS
+                self._access_token = tokens["access_token"]
+                self._refresh_token = tokens["refresh_token"]
+                self._email = email
+                self._password = password
+                return await self.async_step_network()
+
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_EMAIL, default=self._email or vol.UNDEFINED
+                ): str,
+                vol.Required(CONF_PASSWORD): str,
+            }
+        )
+
+        if self.source == SOURCE_REAUTH:
+            self.context["title_placeholders"] = {
+                "name": self._get_reauth_entry().title
+            }
+
+        return self.async_show_form(
+            step_id="credentials",
+            data_schema=schema,
+            errors=errors,
+        )
+
+    # ------------------------------------------------------------------
+    # Step 1b: Token entry
+    # ------------------------------------------------------------------
+
+    async def async_step_token(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle access/refresh token authentication."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -129,23 +226,35 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected error during token validation")
                 errors["base"] = "network_error"
             else:
+                self._auth_method = AUTH_METHOD_TOKEN
                 self._access_token = info[CONF_ACCESS_TOKEN]
                 self._refresh_token = info[CONF_REFRESH_TOKEN]
                 self._email = info["email"]
-
-                # Proceed to network selection
                 return await self.async_step_network()
 
-        # Show the re-auth title if this is a re-authentication flow
-        if self._reauth_entry:
+        if self.source == SOURCE_REAUTH:
             self.context["title_placeholders"] = {
-                "name": self._reauth_entry.title
+                "name": self._get_reauth_entry().title
             }
 
         return self.async_show_form(
-            step_id="user",
-            data_schema=STEP_USER_DATA_SCHEMA,
+            step_id="token",
+            data_schema=STEP_TOKEN_DATA_SCHEMA,
             errors=errors,
+        )
+
+    # ------------------------------------------------------------------
+    # Auth client helper
+    # ------------------------------------------------------------------
+
+    def _create_auth_client(self) -> DazeAuthClient:
+        """Create the appropriate auth client for the selected method."""
+        if self._auth_method == AUTH_METHOD_CREDENTIALS:
+            return DazeCognitoAuthClient(
+                self._access_token, self._refresh_token  # type: ignore[arg-type]
+            )
+        return DazeAuthClient(
+            self._access_token, self._refresh_token  # type: ignore[arg-type]
         )
 
     # ------------------------------------------------------------------
@@ -154,16 +263,14 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_network(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle the network selection step."""
         errors: dict[str, str] = {}
 
         # Fetch networks on first load
         if not self._networks:
             session = async_get_clientsession(self.hass)
-            auth_client = DazeAuthClient(
-                self._access_token, self._refresh_token  # type: ignore[arg-type]
-            )
+            auth_client = self._create_auth_client()
             api_client = DazeApiClient(auth_client, session)
 
             try:
@@ -200,15 +307,15 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
             self._network_uid = user_input[CONF_NETWORK_UID]
             # Find the network name from the selected UID
             for net in self._networks:
-                if net.get("uid") == self._network_uid:
-                    self._network_name = net.get("name", "")
+                if net.uid == self._network_uid:
+                    self._network_name = net.name or ""
                     break
 
             return await self.async_step_confirm()
 
         # Build selector options from available networks
         network_options = {
-            net["uid"]: net.get("name", "Unknown")
+            net.uid: net.name or "Unknown"
             for net in self._networks
         }
 
@@ -230,7 +337,7 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_confirm(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle the confirmation step — fetches EVSE info and creates the entry."""
         errors: dict[str, str] = {}
 
@@ -241,6 +348,7 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
 
             # Create the config entry
             data = {
+                CONF_AUTH_METHOD: self._auth_method or AUTH_METHOD_TOKEN,
                 CONF_ACCESS_TOKEN: self._access_token,
                 CONF_REFRESH_TOKEN: self._refresh_token,
                 CONF_EMAIL: self._email,
@@ -252,16 +360,13 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_FIRMWARE_VERSION: self._firmware_version,
                 CONF_SOFTWARE_VERSION: self._software_version,
             }
+            if self._auth_method == AUTH_METHOD_CREDENTIALS and self._password:
+                data[CONF_PASSWORD] = self._password
 
-            if self._reauth_entry:
-                # Update existing entry (re-auth flow)
-                self.hass.config_entries.async_update_entry(
-                    self._reauth_entry, data=data
+            if self.source == SOURCE_REAUTH:
+                return self.async_update_reload_and_abort(
+                    self._get_reauth_entry(), data_updates=data
                 )
-                await self.hass.config_entries.async_reload(
-                    self._reauth_entry.entry_id
-                )
-                return self.async_abort(reason="reauth_successful")
 
             # Set unique ID to prevent duplicate entries
             await self.async_set_unique_id(self._serial_number)
@@ -274,9 +379,7 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
 
         # Fetch EVSE info to populate confirmation details
         session = async_get_clientsession(self.hass)
-        auth_client = DazeAuthClient(
-            self._access_token, self._refresh_token  # type: ignore[arg-type]
-        )
+        auth_client = self._create_auth_client()
         api_client = DazeApiClient(auth_client, session)
 
         try:
@@ -299,12 +402,12 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
             )
 
         evse = evses[0]
-        original_evse_name = evse.get("evseName", "Daze Wallbox")
+        original_evse_name = evse.evse_name or "Daze Wallbox"
         self._evse_name = f"{original_evse_name} Daze"
-        self._serial_number = evse.get("serialNumber", "")
-        self._device_profile = evse.get("deviceProfile", "")
-        self._firmware_version = evse.get("firmwareVersion", "")
-        self._software_version = evse.get("softwareVersion", "")
+        self._serial_number = evse.serial_number or ""
+        self._device_profile = evse.device_profile or ""
+        self._firmware_version = evse.firmware_version or ""
+        self._software_version = evse.software_version or ""
 
         return self.async_show_form(
             step_id="confirm",
@@ -327,13 +430,16 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
     # ------------------------------------------------------------------
 
     async def async_step_reauth(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle re-authentication when tokens are expired/invalid."""
-        self._reauth_entry = self.hass.config_entries.async_get_entry(
-            self.context["entry_id"]
+        self, entry_data: dict[str, Any]
+    ) -> ConfigFlowResult:
+        """Handle re-authentication — routes to the correct auth step."""
+        self._auth_method = entry_data.get(
+            CONF_AUTH_METHOD, AUTH_METHOD_TOKEN
         )
-        return await self.async_step_user()
+        self._email = entry_data.get(CONF_EMAIL)
+        if self._auth_method == AUTH_METHOD_CREDENTIALS:
+            return await self.async_step_credentials()
+        return await self.async_step_token()
 
     @staticmethod
     @callback
@@ -341,19 +447,15 @@ class DazeConfigFlow(ConfigFlow, domain=DOMAIN):
         config_entry: ConfigEntry,
     ) -> OptionsFlow:
         """Create the options flow."""
-        return DazeOptionsFlowHandler(config_entry)
+        return DazeOptionsFlowHandler()
 
 
 class DazeOptionsFlowHandler(OptionsFlow):
     """Handle Daze Wallbox options."""
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialise options flow."""
-        self._config_entry = config_entry
-
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Manage the options."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)

@@ -11,19 +11,25 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.select import SelectEntity
+from homeassistant.core import callback
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from pydaze import ApiAuthError, ApiError
 
-from .api import ApiAuthError, ApiError
 from .const import DOMAIN
 from .coordinator import DazeDataUpdateCoordinator
+from .models import DazeCoordinatorData
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
-    from homeassistant.helpers.entity_platform import AddEntitiesCallback
+    from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+
+from . import DazeConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
+
+PARALLEL_UPDATES = 1
 
 # Operation mode options exposed in the HA frontend
 OPTION_FAST = "fast"
@@ -32,26 +38,36 @@ OPTION_SCHEDULED = "scheduled"
 
 ATTR_OPTIONS = [OPTION_FAST, OPTION_ECO, OPTION_SCHEDULED]
 
+OPERATION_MODE_MAP: dict[int, str] = {
+    1: OPTION_ECO,
+    2: OPTION_SCHEDULED,
+    3: OPTION_FAST,
+}
 
-def _current_option_from_data(data: dict[str, Any]) -> str:
+
+def _current_option_from_data(data: DazeCoordinatorData) -> str:
     """Derive the current operation mode from coordinator data.
 
     Uses ``ecoModeEnabled`` and ``operationMode`` fields to determine
     the current mode:
     - ``ecoModeEnabled`` is True → eco mode
-    - ``operationMode`` may indicate scheduled or fast otherwise
+    - ``operationMode`` integer maps via OPERATION_MODE_MAP
 
     Falls back to "fast" if no data is available.
     """
-    eco_enabled = data.get("ecoModeEnabled")
+    eco_enabled = data.socket.eco_mode_enabled
     if eco_enabled is True:
         return OPTION_ECO
 
-    mode = data.get("operationMode")
+    mode = data.socket.operation_mode
     if mode is not None:
-        mode_str = str(mode).lower()
-        if mode_str in ATTR_OPTIONS:
-            return mode_str
+        mapped = OPERATION_MODE_MAP.get(mode)
+        if mapped is not None:
+            return mapped
+        _LOGGER.warning(
+            "Unknown operationMode value %r from API; defaulting to 'fast'",
+            mode,
+        )
 
     return OPTION_FAST
 
@@ -63,12 +79,13 @@ _MODE_TO_ECO: dict[str, bool | None] = {
 }
 
 
-class DazeWallboxSelectEntity(
+class DazeWallboxSelectEntity(  # type: ignore[reportIncompatibleVariableOverride]
     CoordinatorEntity[DazeDataUpdateCoordinator], SelectEntity
 ):
     """Select entity to choose the Daze wallbox operation mode."""
 
     _attr_has_entity_name = True
+    _attr_translation_key = "operation_mode"
     _attr_options = ATTR_OPTIONS
 
     def __init__(
@@ -93,12 +110,16 @@ class DazeWallboxSelectEntity(
         self._attr_unique_id = f"{serial_number}_operation_mode"
         self._attr_device_info = device_info
 
-    @property
-    def current_option(self) -> str | None:
-        """Return the current operation mode."""
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Update current option from coordinator data."""
         if self.coordinator.data is None:
-            return None
-        return _current_option_from_data(self.coordinator.data)
+            self._attr_current_option = None
+        else:
+            self._attr_current_option = _current_option_from_data(
+                self.coordinator.data
+            )
+        super()._handle_coordinator_update()
 
     async def async_select_option(self, option: str) -> None:
         """Set the operation mode on the wallbox.
@@ -116,17 +137,10 @@ class DazeWallboxSelectEntity(
 
         eco_value = _MODE_TO_ECO.get(option)
         if eco_value is None:
-            # "scheduled" mode — not yet supported via API
-            _LOGGER.warning(
-                "Scheduled operation mode is not yet supported via the "
-                "Daze API on wallbox %s",
-                self._serial_number,
-            )
-            self._notify_error(
+            raise HomeAssistantError(
                 "Scheduled operation mode is not yet supported via the "
                 "Daze API. Please use 'Fast' or 'Eco' mode."
             )
-            return
 
         try:
             _LOGGER.info(
@@ -141,50 +155,25 @@ class DazeWallboxSelectEntity(
             )
             await self.coordinator.async_request_refresh()
         except ApiAuthError as err:
-            _LOGGER.warning(
-                "Auth error setting operation mode on %s: %s",
-                self._serial_number,
-                err,
-            )
-            self._notify_error(
-                "Authentication failed when trying to change the "
-                "operation mode. Please re-authenticate the integration."
-            )
+            raise ConfigEntryAuthFailed(
+                "Authentication failed when setting operation mode. "
+                "Please re-authenticate the Daze integration."
+            ) from err
         except ApiError as err:
-            _LOGGER.warning(
-                "API error setting operation mode on %s: %s",
-                self._serial_number,
-                err,
-            )
-            self._notify_error(
-                "Failed to change the operation mode. "
-                f"Error: {err}"
-            )
-
-    def _notify_error(self, message: str) -> None:
-        """Show a persistent notification in the HA frontend."""
-        self.hass.components.persistent_notification.async_create(
-            hass=self.hass,
-            message=message,
-            title="Daze Wallbox — Operation Mode Error",
-            notification_id=f"daze_select_error_{self._serial_number}",
-        )
+            raise HomeAssistantError(
+                f"Failed to set operation mode: {err}"
+            ) from err
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    entry: DazeConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up Daze Wallbox select entity.
-
-    Reads the coordinator, API client, serial number, and device info
-    from ``hass.data`` and registers the select entity.
-    """
-    entry_data = hass.data[DOMAIN][entry.entry_id]
-    coordinator: DazeDataUpdateCoordinator = entry_data["coordinator"]
-    api_client = entry_data["api_client"]
-    serial_number: str = entry_data["serial_number"]
+    """Set up Daze Wallbox select entity."""
+    coordinator = entry.runtime_data.coordinator
+    api_client = entry.runtime_data.api_client
+    serial_number = entry.runtime_data.serial_number
 
     device_info = DeviceInfo(
         identifiers={(DOMAIN, serial_number)},
