@@ -2,7 +2,7 @@ name: Build and Release
 
 on:
   release:
-    types: [created, published]
+    types: [published]
 
 jobs:
   release-zip:
@@ -28,23 +28,27 @@ jobs:
           echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Patch manifest.json
+        env:
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
         run: |
+          MANIFEST="custom_components/daze/manifest.json"
+
           # Validate it looks like a version string
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Warning: Version '${VERSION}' may not follow semver"
           fi
 
           # Backup original
-          cp manifest.json manifest.json.backup
+          cp "$MANIFEST" "${MANIFEST}.backup"
 
           # Apply patch
-          jq --arg version "$VERSION" '.version = $version' manifest.json > manifest.json.new
-          mv manifest.json.new manifest.json
+          jq --arg version "$VERSION" '.version = $version' "$MANIFEST" > "${MANIFEST}.new"
+          mv "${MANIFEST}.new" "$MANIFEST"
 
           # Verify JSON is still valid
-          jq empty manifest.json || {
+          jq empty "$MANIFEST" || {
             echo "ERROR: manifest.json is no longer valid JSON!"
-            cp manifest.json.backup manifest.json
+            cp "${MANIFEST}.backup" "$MANIFEST"
             exit 1
           }
 
@@ -53,17 +57,16 @@ jobs:
       - name: Package Custom Component
         run: |
           mkdir -p dist
-          # Get the component name from manifest.json
-          COMPONENT_NAME=$(jq -r '.domain' manifest.json)
+          COMPONENT_NAME=$(jq -r '.domain' custom_components/daze/manifest.json)
 
-          # Zip the component folder
-          zip -r "dist/${COMPONENT_NAME}.zip" "${COMPONENT_NAME}" 
+          cd "custom_components/${COMPONENT_NAME}"
+          zip -r "${GITHUB_WORKSPACE}/dist/${COMPONENT_NAME}.zip" .
 
-          echo "Package created: dist/${COMPONENT_NAME}.zip" >> $GITHUB_OUTPUT
+          echo "Package created: dist/${COMPONENT_NAME}.zip"
 
       - name: Upload Release ZIP
         uses: softprops/action-gh-release@v1
         with:
-          files: "*.zip"
+          files: dist/*.zip
           tag_name: ${{ github.event.release.tag_name }}
           token: ${{ secrets.GITHUB_TOKEN }}
